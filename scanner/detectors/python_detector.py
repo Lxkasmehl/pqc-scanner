@@ -165,7 +165,10 @@ class PythonDetector(BaseDetector):
     def detect(self, file_path: Path, source: str) -> list[Finding]:
         try:
             tree = ast.parse(source)
-        except SyntaxError:
+        except (SyntaxError, ValueError):
+            # Some edge-case Python source (e.g. complex f-string syntax from
+            # newer CPython tests) can raise ValueError in the parser.
+            # Treat as unparseable and continue scanning other files.
             return []
         visitor = _PythonVisitor(file_path, source)
         visitor.visit(tree)

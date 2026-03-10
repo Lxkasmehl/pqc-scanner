@@ -213,7 +213,11 @@ def collect_and_scan_repos(
             shutil.rmtree(target, ignore_errors=True)
         if not clone_repo(repo.get("clone_url", f"https://github.com/{full_name}.git"), target):
             continue
-        result = scan_repository(target, exclude_tests=exclude_tests)
+        try:
+            result = scan_repository(target, exclude_tests=exclude_tests)
+        except Exception as e:
+            logger.warning("Could not scan repository {}: {}", full_name, e)
+            continue
         metadata = {
             "language": repo.get("language", ""),
             "stars": repo.get("stargazers_count", 0),

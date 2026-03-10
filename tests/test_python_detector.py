@@ -56,3 +56,13 @@ def test_python_detector_invalid_syntax_returns_empty():
     detector = PythonDetector()
     findings = detector.detect(Path("x.py"), "syntax error {{{")
     assert findings == []
+
+
+def test_python_detector_value_error_returns_empty():
+    detector = PythonDetector()
+    source = """
+    y = 20
+    x = f\"{2:{y=}}\"
+    """
+    findings = detector.detect(Path("x.py"), source)
+    assert findings == []

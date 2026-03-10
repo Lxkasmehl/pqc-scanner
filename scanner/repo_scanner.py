@@ -113,7 +113,12 @@ def scan_repository(
             logger.warning("Could not read {}: {}", path, e)
             continue
 
-        raw_findings = detector.detect(path, source)
+        try:
+            raw_findings = detector.detect(path, source)
+        except Exception as e:
+            logger.warning("Could not parse {}: {}", path, e)
+            continue
+
         is_test = _is_test_path(path, repo_path)
         file_count[detector.language] = file_count.get(detector.language, 0) + 1
 
