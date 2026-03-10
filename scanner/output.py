@@ -53,7 +53,7 @@ def write_aggregate_csv(results_root: Path, rows: list[dict[str, Any]]) -> Path:
     if not rows:
         # Write header only
         fieldnames = [
-            "repo_name", "language", "stars", "forks", "created_at", "size",
+            "repo_name", "language", "stars", "forks", "created_at", "size", "topics",
             "total_findings", "vulnerable_count", "safe_count", "pqc_ready_count",
             "has_vulnerable", "vulnerability_score",
         ]
@@ -79,6 +79,7 @@ def build_aggregate_row(
     """
     Build one row for aggregate CSV from a scan result and optional repo metadata.
     metadata can contain: language, stars, forks, created_at, size, default_branch, topics.
+    topics are stored as pipe-separated for CSV (domain/correlation analysis).
     """
     s = result.get("summary", {})
     row: dict[str, Any] = {
@@ -88,6 +89,7 @@ def build_aggregate_row(
         "forks": "",
         "created_at": "",
         "size": "",
+        "topics": "",
         "total_findings": s.get("total_findings", 0),
         "vulnerable_count": s.get("vulnerable_count", 0),
         "safe_count": s.get("safe_count", 0),
@@ -101,4 +103,6 @@ def build_aggregate_row(
         row["forks"] = metadata.get("forks", "")
         row["created_at"] = metadata.get("created_at", "")
         row["size"] = metadata.get("size", "")
+        topics = metadata.get("topics", [])
+        row["topics"] = "|".join(topics) if isinstance(topics, list) else str(topics)
     return row

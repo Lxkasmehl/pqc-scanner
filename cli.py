@@ -85,16 +85,19 @@ def _scan_github_repo(owner_repo: str, exclude_tests: bool, verbose: bool) -> No
 
 @app.command("collect")
 def collect(
-    language: str = typer.Option("python", "--language", "-l", help="Filter by language"),
+    language: str = typer.Option("python", "--language", "-l", help="Filter by language (used only without --from-file)"),
     min_stars: int = typer.Option(10, "--min-stars"),
-    limit: int = typer.Option(100, "--limit", help="Max repos to collect and scan"),
+    limit: int = typer.Option(100, "--limit", help="Max repos to scan (use 0 for no limit when using --from-file)"),
     created_after: str = typer.Option(None, "--created-after", help="ISO date YYYY-MM-DD"),
     created_before: str = typer.Option(None, "--created-before", help="ISO date YYYY-MM-DD"),
+    from_file: Path | None = typer.Option(None, "--from-file", "-f", path_type=Path, help="JSONL or text file with repo list (one full_name or owner/repo per line) for large runs"),
     exclude_tests: bool = typer.Option(True, "--exclude-tests/--no-exclude-tests"),
     verbose: bool = typer.Option(False, "-v", "--verbose"),
 ) -> None:
     """
-    Collect and scan N repos from GitHub (search API), then update aggregate CSV.
+    Collect and scan repos: from GitHub search (default) or from a repo list file (--from-file).
+    For 10k–50k repos, generate a list with 'collect export-repos' or BigQuery, then run
+    with --from-file in a Codespace or cloud worker.
     """
     _setup_logging(verbose)
     from scanner.github_collector import collect_and_scan_repos
@@ -102,10 +105,63 @@ def collect(
         language=language,
         min_stars=min_stars,
         limit=limit,
-        created_after=created_after,
-        created_before=created_before,
+        created_after=created_after or None,
+        created_before=created_before or None,
         exclude_tests=exclude_tests,
         results_dir=RESULTS_DIR,
+        repo_list_path=from_file,
+    )
+
+
+@app.command("build-repo-list")
+def build_repo_list(
+    output: Path = typer.Option(..., "--output", "-o", path_type=Path, help="Output JSONL file for collect --from-file"),
+    languages: str = typer.Option("Python,Java,Go", "--languages", "-l", help="Comma-separated languages (balanced proportions)"),
+    total: int = typer.Option(15000, "--total", "-n", help="Target total repos (split equally across languages)"),
+    min_stars: int = typer.Option(10, "--min-stars"),
+    years_start: int = typer.Option(2015, "--years-start"),
+    years_end: int | None = typer.Option(None, "--years-end"),
+    verbose: bool = typer.Option(False, "-v", "--verbose"),
+) -> None:
+    """
+    Build one repo list with Python, Java, and Go in similar proportions (one command).
+    Runs stratified search per language, writes round-robin to JSONL. Then run
+    'collect --from-file <output> --limit 0' (e.g. in Codespaces).
+    """
+    _setup_logging(verbose)
+    from scanner.github_collector import export_repos_multi_language
+    lang_list = [s.strip() for s in languages.split(",") if s.strip()]
+    export_repos_multi_language(
+        output_path=output,
+        languages=lang_list,
+        total=total,
+        min_stars=min_stars,
+        created_year_start=years_start,
+        created_year_end=years_end,
+    )
+
+
+@app.command("export-repos")
+def export_repos(
+    output: Path = typer.Option(..., "--output", "-o", path_type=Path, help="Output JSONL file (repo list for --from-file)"),
+    language: str = typer.Option("python", "--language", "-l"),
+    min_stars: int = typer.Option(10, "--min-stars"),
+    years_start: int = typer.Option(2015, "--years-start"),
+    years_end: int | None = typer.Option(None, "--years-end"),
+    verbose: bool = typer.Option(False, "-v", "--verbose"),
+) -> None:
+    """
+    Build a single-language repo list via stratified GitHub search (by year).
+    For balanced Python/Java/Go use 'build-repo-list' instead.
+    """
+    _setup_logging(verbose)
+    from scanner.github_collector import export_repos_stratified
+    export_repos_stratified(
+        output_path=output,
+        language=language,
+        min_stars=min_stars,
+        created_year_start=years_start,
+        created_year_end=years_end,
     )
 
 

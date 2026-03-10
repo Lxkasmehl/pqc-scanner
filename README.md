@@ -61,6 +61,19 @@ python cli.py collect --language python --min-stars 10 --limit 100
 
 Options: `--created-after`, `--created-before` (YYYY-MM-DD), `--exclude-tests`, `-v`.
 
+For **10,000–50,000 repos** (e.g. for the paper’s empirical study), the Search API’s 1,000-result limit requires a two-step workflow: build a repo list, then run the scanner from that list (e.g. in a Codespace or cloud VM). See **[docs/SCALING.md](docs/SCALING.md)**.
+
+- **Build repo list** (one command, Python/Java/Go in similar proportions):
+  ```bash
+  python cli.py build-repo-list --output repo_list.jsonl --total 15000
+  ```
+- **Scan from list** (use `--limit 0` to process the whole file):
+  ```bash
+  python cli.py collect --from-file repo_list.jsonl --limit 0
+  ```
+
+Single-language list: `export-repos --output ... --language python` (see docs).
+
 ### Report
 
 Print summary statistics over all results in `results/`:
@@ -101,6 +114,8 @@ pqc-scanner/
 ├── results/
 │   ├── raw/              # Per-repo JSON
 │   └── aggregate.csv     # One row per repo
+├── docs/
+│   └── SCALING.md       # Running at 10k–50k repos (Codespaces, BigQuery)
 ├── cli.py
 ├── .env.example
 ├── requirements.txt

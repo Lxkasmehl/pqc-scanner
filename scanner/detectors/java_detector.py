@@ -2,6 +2,7 @@
 Java detector using tree-sitter. Detects javax.crypto, java.security, Bouncy Castle
 and getInstance(...) usage with cryptographic algorithm strings.
 """
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -28,7 +29,7 @@ GETINSTANCE_ALGOS = {
 }
 
 
-def _get_text(source: bytes, node: Node) -> str:
+def _get_text(source: bytes, node: "Node") -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
@@ -39,7 +40,7 @@ def _get_line_snippet(source: str, line_no: int) -> str:
     return ""
 
 
-def _find_string_literal_argument(source_bytes: bytes, node: Node) -> str | None:
+def _find_string_literal_argument(source_bytes: bytes, node: "Node") -> str | None:
     """If node is a method_invocation, find first string literal argument and return its value (lowercase)."""
     if node.type != "method_invocation":
         return None
@@ -61,7 +62,7 @@ def _find_string_literal_argument(source_bytes: bytes, node: Node) -> str | None
     return None
 
 
-def _node_line(node: Node, source_bytes: bytes) -> int:
+def _node_line(node: "Node", source_bytes: bytes) -> int:
     """1-based line number of node start."""
     return source_bytes[: node.start_byte].count(b"\n") + 1
 
@@ -86,7 +87,7 @@ class _JavaVisitor:
             )
         )
 
-    def _visit_node(self, node: Node) -> None:
+    def _visit_node(self, node: "Node") -> None:
         if node.type == "import_declaration":
             # Scrape import path from children
             for i in range(node.child_count):
@@ -130,7 +131,7 @@ class _JavaVisitor:
         for i in range(node.child_count):
             self._visit_node(node.child(i))
 
-    def run(self, root: Node) -> list[Finding]:
+    def run(self, root: "Node") -> list[Finding]:
         self._visit_node(root)
         return self.findings
 
