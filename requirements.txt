@@ -1,0 +1,18 @@
+# PQC-Readiness Scanner
+# Python 3.11+
+
+# CLI and config
+typer>=0.9.0
+python-dotenv>=1.0.0
+loguru>=0.7.0
+
+# GitHub
+httpx>=0.25.0
+
+# Parsing (optional for Java/Go)
+tree-sitter>=0.22.0
+tree-sitter-java>=0.23.0
+tree-sitter-go>=0.24.0
+
+# Dev / tests
+pytest>=7.0.0
