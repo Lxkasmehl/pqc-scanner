@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       repo_list_run_id:
-        description: "Run ID of a completed 'Build repo list' run (to get repo_list.jsonl)"
+        description: "Run ID of a completed 'Build repo list' run (Actions → Build repo list → copy run ID; not the scanner run)"
         required: true
         type: string
       limit:
@@ -64,6 +64,29 @@ jobs:
           else
             echo "run_id=${{ inputs.repo_list_run_id }}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Validate repo list run (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RUN_ID: ${{ steps.repo_list_run.outputs.run_id }}
+        run: |
+          echo "Checking that run $RUN_ID is a 'Build repo list' run with artifact 'repo-list'..."
+          WF=$(gh run view "$RUN_ID" --json name,workflowName 2>/dev/null || true)
+          if [ -z "$WF" ]; then
+            echo "::error::Run ID $RUN_ID not found or not accessible. Use the Run ID from Actions → 'Build repo list' (not from 'Run scanner')."
+            exit 1
+          fi
+          NAME=$(echo "$WF" | jq -r '.workflowName // .name')
+          if [ "$NAME" != "Build repo list" ]; then
+            echo "::error::Run $RUN_ID is '$NAME', not 'Build repo list'. Use the Run ID from Actions → 'Build repo list'."
+            exit 1
+          fi
+          ARTS=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[].name' 2>/dev/null || true)
+          if [ -z "$ARTS" ] || ! echo "$ARTS" | grep -qx "repo-list"; then
+            echo "::error::Run $RUN_ID has no artifact named 'repo-list'. Run 'Build repo list' first and use that run's ID."
+            exit 1
+          fi
+          echo "Run is valid."
 
       - name: Download repo list
         uses: actions/download-artifact@v4
