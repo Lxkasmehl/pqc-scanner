@@ -88,11 +88,13 @@ jobs:
           fi
           echo "Run is valid."
 
+      # Use gh run download (not actions/download-artifact) so cross-run download
+      # works with default GITHUB_TOKEN; the action can only download current run's artifacts.
       - name: Download repo list
-        uses: actions/download-artifact@v4
-        with:
-          name: repo-list
-          run-id: ${{ steps.repo_list_run.outputs.run_id }}
+        env:
+          RUN_ID: ${{ steps.repo_list_run.outputs.run_id }}
+        run: |
+          gh run download "$RUN_ID" -n repo-list -D . -R ${{ github.repository }}
 
       - name: Prepare repo list path
         run: |
