@@ -84,13 +84,15 @@ python cli.py report
 
 ## Configuration (.env)
 
-| Variable           | Description                                |
-|--------------------|--------------------------------------------|
-| `GITHUB_TOKEN`     | GitHub personal access token (recommended) |
-| `PQC_RESULTS_DIR`  | Output directory (default: `results`)       |
-| `PQC_CLONE_DIR`    | Where to clone repos (default: temp dir)   |
+| Variable              | Description                                                       |
+|-----------------------|-------------------------------------------------------------------|
+| `GITHUB_TOKEN`        | GitHub personal access token (recommended; higher search limits)   |
+| `PQC_RESULTS_DIR`     | Output directory (default: `results`)                             |
+| `PQC_CLONE_DIR`       | Where to clone repos (default: temp dir)                          |
+| `GITHUB_SEARCH_DELAY` | Seconds between Search API requests (default: 2.5). Increase to 3–4 if you hit secondary rate limits. |
 
-Scanner state (already-scanned repos) is stored in `scanner/state.db`.
+Scanner state (already-scanned repos) is stored in `scanner/state.db`.  
+`build-repo-list` is throttled so 15k repos can take roughly 1–2 hours; on 403 it backs off and retries.
 
 ## Project structure
 

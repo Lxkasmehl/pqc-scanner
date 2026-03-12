@@ -28,12 +28,27 @@ def _get_headers() -> dict[str, str]:
     return {"Accept": "application/vnd.github.v3+json"}
 
 
-def _rate_limit_backoff(response: httpx.Response, attempt: int) -> None:
-    """Exponential backoff on 403/429 or when X-RateLimit-Remaining is 0."""
-    if response.status_code in (403, 429) or response.headers.get("X-RateLimit-Remaining") == "0":
-        wait = (2 ** attempt) + 1
-        logger.warning("Rate limit; waiting {}s", wait)
-        time.sleep(wait)
+# Search API: ~30 req/min; secondary limits trigger easily. Min delay between search requests (seconds).
+GITHUB_SEARCH_DELAY = float(os.getenv("GITHUB_SEARCH_DELAY", "2.5"))
+
+
+def _rate_limit_backoff(response: httpx.Response, attempt: int) -> int | None:
+    """
+    On 403/429 or X-RateLimit-Remaining=0: wait and return seconds waited (for optional retry).
+    For 403 "secondary rate limit", respects Retry-After or waits 60–90s.
+    Returns None if no rate limit hit.
+    """
+    if response.status_code not in (403, 429) and response.headers.get("X-RateLimit-Remaining") != "0":
+        return None
+    # Secondary rate limit often doesn't send Retry-After; need long backoff
+    retry_after = response.headers.get("Retry-After")
+    if retry_after and retry_after.isdigit():
+        wait = min(int(retry_after), 300)
+    else:
+        wait = min(60 + (20 * attempt), 300)  # 60, 80, 100, 120, 140 s
+    logger.warning("Rate limit ({}); waiting {}s", response.status_code, wait)
+    time.sleep(wait)
+    return wait
 
 
 def init_state_db(db_path: Path) -> None:
@@ -96,14 +111,16 @@ def search_repos(
         while len(repos) < limit:
             url = f"{GITHUB_API}/search/repositories"
             params = {"q": query, "sort": "stars", "order": "desc", "per_page": per_page, "page": page}
-            for attempt in range(5):
+            for attempt in range(8):
                 resp = client.get(url, params=params)
-                _rate_limit_backoff(resp, attempt)
                 if resp.status_code == 200:
                     break
-                if resp.status_code in (403, 422):
+                if resp.status_code == 422:
                     logger.error("GitHub API error: {} {}", resp.status_code, resp.text[:200])
                     return repos
+                if resp.status_code in (403, 429):
+                    _rate_limit_backoff(resp, attempt)
+                    continue  # retry same page
                 time.sleep(2 ** attempt)
             else:
                 return repos
@@ -131,7 +148,7 @@ def search_repos(
             page += 1
             if page > max_pages:
                 break
-            time.sleep(0.5)  # Be nice to API
+            time.sleep(GITHUB_SEARCH_DELAY)  # Search API: stay under ~30/min and avoid secondary limits
 
     return repos
 
@@ -170,7 +187,7 @@ def _collect_repos_for_language(
                 result.append(r)
                 if len(result) >= max_repos:
                     break
-        time.sleep(1)
+        time.sleep(GITHUB_SEARCH_DELAY)
     return result
 
 
@@ -272,7 +289,7 @@ def export_repos_stratified(
                     total += 1
             if len(repos) >= max_repos_per_query:
                 logger.warning("Hit {} results for {}; consider splitting by month", len(repos), year)
-            time.sleep(1)
+            time.sleep(GITHUB_SEARCH_DELAY)
     logger.info("Exported {} unique repos to {}", total, output_path)
     return total
 

@@ -16,6 +16,8 @@ The GitHub Search API returns **at most 1,000 results per query**. To build a da
    - `--languages "Python,Java,Go"` — default; use e.g. `"Python,Go"` for two languages
    - `--min-stars 10`, `--years-start 2015`, `--years-end 2024`
 
+   The Search API is throttled (about 2.5 s between requests) to avoid “secondary rate limit” 403s. Building 15k repos can take roughly 1–2 hours. If you still hit 403, set `GITHUB_SEARCH_DELAY=3` or `4` in `.env`.
+
    For a **single language** only, use `export-repos` instead:
 
    ```bash
