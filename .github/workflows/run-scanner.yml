@@ -1,0 +1,113 @@
+# Run the PQC scanner on a repo list (from "Build repo list" artifact).
+# Each run can process a batch (e.g. 500 repos) within the 6h Actions limit.
+# To continue, run again with "Resume from run ID" set to the previous scanner run.
+# results/ and scanner/state.db are in .gitignore; never committed.
+
+name: Run scanner (from list)
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_list_run_id:
+        description: "Run ID of a completed 'Build repo list' run (to get repo_list.jsonl)"
+        required: true
+        type: string
+      limit:
+        description: "Max repos to scan in this run (0 = no limit; 6h timeout applies)"
+        required: false
+        default: 500
+        type: number
+      resume_from_run_id:
+        description: "Optional: Run ID of a previous 'Run scanner' run (to resume state)"
+        required: false
+        type: string
+      verbose:
+        description: "Verbose logging"
+        required: false
+        default: false
+        type: boolean
+  workflow_run:
+    workflows: ["Build repo list"]
+    types: [completed]
+    branches: [main, master]
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6h max
+    # When triggered by "Build repo list", only run if that workflow succeeded
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Get repo list run ID
+        id: repo_list_run
+        run: |
+          if [ -n "${{ github.event.workflow_run.id }}" ]; then
+            echo "run_id=${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
+          else
+            echo "run_id=${{ inputs.repo_list_run_id }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download repo list
+        uses: actions/download-artifact@v4
+        with:
+          name: repo-list
+          run-id: ${{ steps.repo_list_run.outputs.run_id }}
+
+      - name: Prepare repo list path
+        run: |
+          if [ -f repo-list/repo_list.jsonl ]; then
+            cp repo-list/repo_list.jsonl repo_list.jsonl
+          elif [ -f repo_list.jsonl ]; then
+            true
+          else
+            echo "No repo_list.jsonl found"
+            exit 1
+          fi
+
+      - name: Resume state (optional)
+        if: ${{ inputs.resume_from_run_id != '' }}
+        env:
+          RESUME_RUN_ID: ${{ inputs.resume_from_run_id }}
+        run: |
+          mkdir -p scanner results
+          echo "Downloading state and results from run $RESUME_RUN_ID ..."
+          gh run download "$RESUME_RUN_ID" -n scanner-state -D . -R ${{ github.repository }}
+          gh run download "$RESUME_RUN_ID" -n scanner-results -D results -R ${{ github.repository }} 2>/dev/null || true
+          if [ -f scanner/state.db ]; then
+            echo "Resuming from previous state"
+          fi
+
+      - name: Run scanner
+        env:
+          LIMIT: ${{ inputs.limit || 500 }}
+        run: |
+          python cli.py collect --from-file repo_list.jsonl --limit $LIMIT ${{ inputs.verbose && '--verbose' || '' }}
+
+      - name: Upload scanner state
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-state
+          path: scanner/state.db
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-results
+          path: results/

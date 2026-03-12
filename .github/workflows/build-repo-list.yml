@@ -1,0 +1,55 @@
+# Build repo list (stratified GitHub search) without committing the file.
+# Run manually; download repo_list.jsonl from the workflow run artifacts.
+# repo_list.jsonl is in .gitignore and must not be committed.
+
+name: Build repo list
+
+on:
+  workflow_dispatch:
+    inputs:
+      total:
+        description: "Target number of repos (split across Python, Java, Go)"
+        required: false
+        default: 15000
+        type: number
+      verbose:
+        description: "Verbose logging"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  # Use PAT from repo secret for higher rate limits, or default Actions token
+  GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
+
+jobs:
+  build-repo-list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6h max for Actions; 15k repos can take 1–2h
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build repo list
+        run: |
+          python cli.py build-repo-list \
+            --output repo_list.jsonl \
+            --total ${{ inputs.total }} \
+            ${{ inputs.verbose && '--verbose' || '' }}
+
+      - name: Upload repo_list.jsonl
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-list
+          path: repo_list.jsonl

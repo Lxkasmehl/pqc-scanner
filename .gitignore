@@ -3,6 +3,8 @@
 
 # build/output data
 results/
+repo_list.jsonl
+repo_list*.jsonl
 
 # Python cache and bytecode
 __pycache__/

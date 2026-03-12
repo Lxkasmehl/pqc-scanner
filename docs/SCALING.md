@@ -18,6 +18,8 @@ The GitHub Search API returns **at most 1,000 results per query**. To build a da
 
    The Search API is throttled (about 2.5 s between requests) to avoid “secondary rate limit” 403s. Building 15k repos can take roughly 1–2 hours. If you still hit 403, set `GITHUB_SEARCH_DELAY=3` or `4` in `.env`.
 
+   **GitHub Actions (no local run):** You can build the list in the cloud without committing it. Go to **Actions → Build repo list → Run workflow**, choose total (e.g. 15000), then run. When the job finishes, download the `repo-list` artifact (the JSONL file). The file is in `.gitignore` and must not be committed. For higher rate limits, add a repo secret `GH_PAT` (GitHub Personal Access Token with no extra scopes).
+
    For a **single language** only, use `export-repos` instead:
 
    ```bash
@@ -36,6 +38,8 @@ The GitHub Search API returns **at most 1,000 results per query**. To build a da
 
    - State is stored in `scanner/state.db`; already-scanned repos are skipped on resume.
    - Persist `results/` and `scanner/state.db` (e.g. commit results, or copy out of the environment) so you can resume or merge runs.
+
+   **Run the scanner in GitHub Actions:** You can also run the scanner in the cloud without Oracle or a VM. Use **Actions → Run scanner (from list)**. Each run has a 6-hour limit, so use a batch size (e.g. `limit` 500). You must pass the **Run ID** of a completed "Build repo list" run so the workflow can download the repo list artifact. To process more repos, run the workflow again and set **Resume from run ID** to the previous "Run scanner" run; it will download `state.db` and `results/` and continue. Download the `scanner-results` and `scanner-state` artifacts from each run if you want to merge or keep them locally. `results/` and `scanner/state.db` are in `.gitignore` and must not be committed.
 
 ## Option B: GitHub Archive / BigQuery (largest scale)
 
