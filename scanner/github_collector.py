@@ -22,7 +22,8 @@ GITHUB_API = "https://api.github.com"
 
 
 def _get_headers() -> dict[str, str]:
-    token = os.getenv("GITHUB_TOKEN", "")
+    # Support both GITHUB_TOKEN and GH_PAT (repo secret name) so .env can use either
+    token = (os.getenv("GITHUB_TOKEN") or os.getenv("GH_PAT") or "").strip()
     if token:
         return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
     return {"Accept": "application/vnd.github.v3+json"}
@@ -30,6 +31,9 @@ def _get_headers() -> dict[str, str]:
 
 # Search API: ~30 req/min; secondary limits trigger easily. Min delay between search requests (seconds).
 GITHUB_SEARCH_DELAY = float(os.getenv("GITHUB_SEARCH_DELAY", "2.5"))
+
+# When rate-limited, max time to keep retrying one request before giving up (seconds). Keeps total run under 6h.
+RATE_LIMIT_MAX_WAIT_PER_REQUEST = int(os.getenv("GITHUB_RATE_LIMIT_MAX_WAIT", "900"))  # 15 min default
 
 
 def _rate_limit_backoff(response: httpx.Response, attempt: int) -> int | None:
@@ -46,7 +50,7 @@ def _rate_limit_backoff(response: httpx.Response, attempt: int) -> int | None:
         wait = min(int(retry_after), 300)
     else:
         wait = min(60 + (20 * attempt), 300)  # 60, 80, 100, 120, 140 s
-    logger.warning("Rate limit ({}); waiting {}s", response.status_code, wait)
+    logger.warning("Rate limit ({}); waiting {}s before retry", response.status_code, wait)
     time.sleep(wait)
     return wait
 
@@ -111,7 +115,10 @@ def search_repos(
         while len(repos) < limit:
             url = f"{GITHUB_API}/search/repositories"
             params = {"q": query, "sort": "stars", "order": "desc", "per_page": per_page, "page": page}
-            for attempt in range(8):
+            resp = None
+            attempt = 0
+            waited_this_page = 0
+            while True:
                 resp = client.get(url, params=params)
                 if resp.status_code == 200:
                     break
@@ -119,11 +126,19 @@ def search_repos(
                     logger.error("GitHub API error: {} {}", resp.status_code, resp.text[:200])
                     return repos
                 if resp.status_code in (403, 429):
-                    _rate_limit_backoff(resp, attempt)
-                    continue  # retry same page
-                time.sleep(2 ** attempt)
-            else:
-                return repos
+                    if waited_this_page >= RATE_LIMIT_MAX_WAIT_PER_REQUEST:
+                        logger.error("Rate limit: gave up after {}s wait for this request", waited_this_page)
+                        return repos
+                    w = _rate_limit_backoff(resp, attempt)
+                    if w is not None:
+                        waited_this_page += w
+                    attempt += 1
+                    continue
+                # Other errors: short backoff and retry
+                time.sleep(min(2 ** attempt, 60))
+                attempt += 1
+                if attempt >= 8:
+                    return repos
 
             data = resp.json()
             items = data.get("items", [])
@@ -247,6 +262,11 @@ def export_repos_multi_language(
             if not any_advanced:
                 break
     logger.info("Wrote {} unique repos to {} (balanced: {})", count, output_path, ", ".join(languages))
+    if count < total:
+        logger.warning(
+            "Only {} repos collected (target was {}). Likely rate-limited. Use GH_PAT for higher limits and re-run.",
+            count, total,
+        )
     return count
 
 

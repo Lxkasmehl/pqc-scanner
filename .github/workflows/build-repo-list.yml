@@ -1,6 +1,9 @@
 # Build repo list (stratified GitHub search) without committing the file.
 # Run manually; download repo_list.jsonl from the workflow run artifacts.
 # repo_list.jsonl is in .gitignore and must not be committed.
+#
+# For 15k repos: add repo secret GH_PAT (Personal Access Token) for higher API
+# rate limits; otherwise the job may hit limits and stop at ~3k (1k per language).
 
 name: Build repo list
 
@@ -41,12 +44,28 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Verify API token
+        run: |
+          if [ -n "$GITHUB_TOKEN" ]; then
+            echo "GITHUB_TOKEN is set (using GH_PAT secret or default token)"
+          else
+            echo "::warning::GITHUB_TOKEN is empty; add repo secret GH_PAT for higher rate limits"
+          fi
+
       - name: Build repo list
         run: |
           python cli.py build-repo-list \
             --output repo_list.jsonl \
             --total ${{ inputs.total }} \
             ${{ inputs.verbose && '--verbose' || '' }}
+
+      - name: Check repo list size
+        run: |
+          LINES=$(wc -l < repo_list.jsonl)
+          echo "repo_list.jsonl has $LINES entries (target was ${{ inputs.total }})"
+          if [ "$LINES" -lt "$(( ${{ inputs.total }} / 2 ))" ]; then
+            echo "::warning::Only $LINES repos (target ${{ inputs.total }}). Add GH_PAT secret for higher rate limits and re-run."
+          fi
 
       - name: Upload repo_list.jsonl
         uses: actions/upload-artifact@v4

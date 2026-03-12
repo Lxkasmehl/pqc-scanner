@@ -42,6 +42,7 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
+      actions: read   # required to download artifact from the "Build repo list" workflow run
 
     steps:
       - name: Checkout
