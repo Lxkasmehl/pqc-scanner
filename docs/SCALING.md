@@ -16,7 +16,7 @@ The GitHub Search API returns **at most 1,000 results per query**. To build a da
    - `--languages "Python,Java,Go"` — default; use e.g. `"Python,Go"` for two languages
    - `--min-stars 10`, `--years-start 2015`, `--years-end 2024`
 
-   The Search API is throttled (about 2.5 s between requests) to avoid “secondary rate limit” 403s. Building 15k repos can take roughly 1–2 hours. If you still hit 403, set `GITHUB_SEARCH_DELAY=3` or `4` in `.env`.
+   The Search API is throttled (about 2.5 s between requests) to avoid “secondary rate limit” 403s. Building 15k repos can take roughly 1–2 hours. If you still hit 403, set `GITHUB_STRATUM_DELAY=20`, `GITHUB_COOLDOWN_AFTER_FULL_STRATUM=45`, or `GITHUB_SEARCH_DELAY=3` in `.env`.
 
    **GitHub Actions (no local run):** You can build the list in the cloud without committing it. Go to **Actions → Build repo list → Run workflow**, choose total (e.g. 15000), then run. When the job finishes, download the `repo-list` artifact (the JSONL file). The file is in `.gitignore` and must not be committed. For higher rate limits, add a repo secret `GH_PAT` (GitHub Personal Access Token with no extra scopes).
 

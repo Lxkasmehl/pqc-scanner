@@ -47,9 +47,13 @@ jobs:
       - name: Verify API token
         run: |
           if [ -n "$GITHUB_TOKEN" ]; then
-            echo "GITHUB_TOKEN is set (using GH_PAT secret or default token)"
+            if [ -n "${{ secrets.GH_PAT }}" ]; then
+              echo "Using GH_PAT secret (higher rate limits)"
+            else
+              echo "Using default GITHUB_TOKEN (GH_PAT not set; add repo secret GH_PAT for higher limits)"
+            fi
           else
-            echo "::warning::GITHUB_TOKEN is empty; add repo secret GH_PAT for higher rate limits"
+            echo "::warning::GITHUB_TOKEN is empty; add repo secret GH_PAT"
           fi
 
       - name: Build repo list
@@ -64,7 +68,7 @@ jobs:
           LINES=$(wc -l < repo_list.jsonl)
           echo "repo_list.jsonl has $LINES entries (target was ${{ inputs.total }})"
           if [ "$LINES" -lt "$(( ${{ inputs.total }} / 2 ))" ]; then
-            echo "::warning::Only $LINES repos (target ${{ inputs.total }}). Add GH_PAT secret for higher rate limits and re-run."
+            echo "::warning::Only $LINES repos (target ${{ inputs.total }}). GitHub Search caps at 1000/query; use GH_PAT and re-run (workflow uses stratum delays to avoid 403)."
           fi
 
       - name: Upload repo_list.jsonl

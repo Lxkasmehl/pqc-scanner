@@ -76,11 +76,14 @@ Single-language list: `export-repos --output ... --language python` (see docs).
 
 ### Report
 
-Print summary statistics over all results in `results/`:
+Print paper-ready statistics: PQC vulnerability rate, breakdown by language, primitive distribution, PQC adoption, and criticality (vulnerable in production vs test code). Export a Markdown report for the paper with `--output`:
 
 ```bash
 python cli.py report
+python cli.py report --output report.md
 ```
+
+The report includes: sample size, % repos with vulnerable primitives, % with PQC-ready primitives, counts by language, top vulnerable/PQC-ready primitives, and vulnerable findings in production vs test code.
 
 ## Configuration (.env)
 

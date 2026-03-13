@@ -32,6 +32,11 @@ def _get_headers() -> dict[str, str]:
 # Search API: ~30 req/min; secondary limits trigger easily. Min delay between search requests (seconds).
 GITHUB_SEARCH_DELAY = float(os.getenv("GITHUB_SEARCH_DELAY", "2.5"))
 
+# Extra delay (seconds) after each year-stratum to avoid secondary rate limit (403) on the next query.
+# GitHub returns max 1000 results per query; after a full 1000 we add COOLDOWN_AFTER_FULL_STRATUM as well.
+GITHUB_STRATUM_DELAY = float(os.getenv("GITHUB_STRATUM_DELAY", "15"))
+COOLDOWN_AFTER_FULL_STRATUM = float(os.getenv("GITHUB_COOLDOWN_AFTER_FULL_STRATUM", "30"))
+
 # When rate-limited, max time to keep retrying one request before giving up (seconds). Keeps total run under 6h.
 RATE_LIMIT_MAX_WAIT_PER_REQUEST = int(os.getenv("GITHUB_RATE_LIMIT_MAX_WAIT", "900"))  # 15 min default
 
@@ -177,6 +182,7 @@ def _collect_repos_for_language(
 ) -> list[dict[str, Any]]:
     """
     Run stratified search by year for one language until we have max_repos or no more results.
+    Uses stratum delay and cooldown after full 1000-result queries to avoid GitHub secondary rate limit (403).
     """
     import datetime
     end = created_year_end or datetime.date.today().year
@@ -203,6 +209,11 @@ def _collect_repos_for_language(
                 if len(result) >= max_repos:
                     break
         time.sleep(GITHUB_SEARCH_DELAY)
+        # Avoid secondary rate limit: longer pause after each year, and extra cooldown if we hit 1000 (API cap)
+        time.sleep(GITHUB_STRATUM_DELAY)
+        if len(repos) >= 1000:
+            logger.debug("Stratum returned 1000 (API cap); cooldown {}s before next stratum", COOLDOWN_AFTER_FULL_STRATUM)
+            time.sleep(COOLDOWN_AFTER_FULL_STRATUM)
     return result
 
 
@@ -264,7 +275,8 @@ def export_repos_multi_language(
     logger.info("Wrote {} unique repos to {} (balanced: {})", count, output_path, ", ".join(languages))
     if count < total:
         logger.warning(
-            "Only {} repos collected (target was {}). Likely rate-limited. Use GH_PAT for higher limits and re-run.",
+            "Only {} repos collected (target was {}). GitHub Search API returns max 1000 per query; "
+            "if you hit secondary rate limit (403), stratum delays and GH_PAT help. Re-run or increase GITHUB_STRATUM_DELAY.",
             count, total,
         )
     return count

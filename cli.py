@@ -168,9 +168,12 @@ def export_repos(
 @app.command()
 def report(
     results_dir: str = typer.Option(None, "--results-dir", help="Path to results/ (default: env PQC_RESULTS_DIR or 'results')"),
+    output: Path | None = typer.Option(None, "--output", "-o", path_type=Path, help="Write report to file (Markdown for paper/methods)"),
 ) -> None:
     """
-    Generate summary statistics from all results in results/.
+    Generate summary statistics for the paper: PQC vulnerability rate, by language,
+    primitive distribution, PQC adoption, and criticality (production vs test code).
+    Use --output report.md to export a Markdown report for the paper.
     """
     base = Path(results_dir or os.getenv("PQC_RESULTS_DIR", "results"))
     raw_dir = base / "raw"
@@ -178,34 +181,23 @@ def report(
         logger.warning("No results/raw directory at {}", raw_dir)
         raise typer.Exit(0)
 
-    total_repos = 0
-    total_findings = 0
-    total_vulnerable = 0
-    repos_with_vulnerable = 0
+    from scanner.output import compute_report, format_report_text, format_report_markdown
+    aggregate_path = base / "aggregate.csv"
+    stats = compute_report(raw_dir, aggregate_path if aggregate_path.exists() else None)
+    if not stats:
+        raise typer.Exit(0)
 
-    for p in raw_dir.glob("*.json"):
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.warning("Skip {}: {}", p, e)
-            continue
-        total_repos += 1
-        s = data.get("summary", {})
-        total_findings += s.get("total_findings", 0)
-        total_vulnerable += s.get("vulnerable_count", 0)
-        if s.get("has_vulnerable_primitives"):
-            repos_with_vulnerable += 1
+    text = format_report_text(stats)
+    print(text)
+    if aggregate_path.exists():
+        print(f"Aggregate CSV: {aggregate_path}")
 
-    print("=== PQC-Readiness Scanner Report ===")
-    print(f"Repos scanned: {total_repos}")
-    print(f"Total findings: {total_findings}")
-    print(f"Total vulnerable primitives: {total_vulnerable}")
-    print(f"Repos with ≥1 vulnerable primitive: {repos_with_vulnerable}")
-    if total_repos:
-        print(f"Share of repos with vulnerable: {100 * repos_with_vulnerable / total_repos:.1f}%")
-    agg = base / "aggregate.csv"
-    if agg.exists():
-        print(f"Aggregate CSV: {agg}")
+    if output:
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        md = format_report_markdown(stats)
+        output.write_text(md, encoding="utf-8")
+        logger.info("Wrote report to {}", output)
 
 
 if __name__ == "__main__":
