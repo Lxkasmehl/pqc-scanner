@@ -100,12 +100,18 @@ def search_repos(
     limit: int = 100,
     created_after: str | None = None,
     created_before: str | None = None,
+    star_max: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Use GitHub Search API: search repositories by language and stars.
     Returns list of repo items (full_name, stargazers_count, etc.).
+    If star_max is set, uses stars:min_stars..star_max; otherwise stars:>=min_stars.
     """
-    query_parts = [f"language:{language}", f"stars:>={min_stars}"]
+    if star_max is not None:
+        stars_qualifier = f"stars:{min_stars}..{star_max}"
+    else:
+        stars_qualifier = f"stars:>={min_stars}"
+    query_parts = [f"language:{language}", stars_qualifier]
     if created_after:
         query_parts.append(f"created:>={created_after}")
     if created_before:
@@ -173,6 +179,18 @@ def search_repos(
     return repos
 
 
+# Star-range strata: each stratum is a separate API query (max 1000 per query), so we can get 5k+ per language.
+# Order: high stars first, then lower. (low, None) = stars >= low.
+_STAR_STRATA: list[tuple[int, int | None]] = [
+    (10000, None),
+    (5000, 9999),
+    (1000, 4999),
+    (500, 999),
+    (100, 499),
+    (10, 99),
+]
+
+
 def _collect_repos_for_language(
     language: str,
     min_stars: int,
@@ -181,25 +199,27 @@ def _collect_repos_for_language(
     created_year_end: int,
 ) -> list[dict[str, Any]]:
     """
-    Run stratified search by year for one language until we have max_repos or no more results.
+    Run stratified search by star range for one language until we have max_repos or no more results.
+    Each star stratum is a separate query (GitHub caps at 1000 per query), so we get up to 1000 per stratum.
     Uses stratum delay and cooldown after full 1000-result queries to avoid GitHub secondary rate limit (403).
     """
-    import datetime
-    end = created_year_end or datetime.date.today().year
     seen: set[str] = set()
     result: list[dict[str, Any]] = []
-    for year in range(created_year_start, end + 1):
+    for low, high in _STAR_STRATA:
         if len(result) >= max_repos:
             break
-        after = f"{year}-01-01"
-        before = f"{year}-12-31"
+        if high is not None and high < min_stars:
+            continue
+        stratum_low = max(min_stars, low)
+        stratum_high = high  # None => no upper bound
         limit = min(1000, max_repos - len(result))
         repos = search_repos(
             language=language,
-            min_stars=min_stars,
+            min_stars=stratum_low,
             limit=limit,
-            created_after=after,
-            created_before=before,
+            created_after=None,
+            created_before=None,
+            star_max=stratum_high,
         )
         for r in repos:
             fn = r.get("full_name", "")
@@ -209,7 +229,6 @@ def _collect_repos_for_language(
                 if len(result) >= max_repos:
                     break
         time.sleep(GITHUB_SEARCH_DELAY)
-        # Avoid secondary rate limit: longer pause after each year, and extra cooldown if we hit 1000 (API cap)
         time.sleep(GITHUB_STRATUM_DELAY)
         if len(repos) >= 1000:
             logger.debug("Stratum returned 1000 (API cap); cooldown {}s before next stratum", COOLDOWN_AFTER_FULL_STRATUM)
@@ -275,8 +294,8 @@ def export_repos_multi_language(
     logger.info("Wrote {} unique repos to {} (balanced: {})", count, output_path, ", ".join(languages))
     if count < total:
         logger.warning(
-            "Only {} repos collected (target was {}). GitHub Search API returns max 1000 per query; "
-            "if you hit secondary rate limit (403), stratum delays and GH_PAT help. Re-run or increase GITHUB_STRATUM_DELAY.",
+            "Only {} repos collected (target was {}). We use star-range strata (each query max 1000). "
+            "If you hit secondary rate limit (403), stratum delays and GH_PAT help; re-run or increase GITHUB_STRATUM_DELAY.",
             count, total,
         )
     return count
