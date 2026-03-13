@@ -20,7 +20,12 @@ except ImportError:
     tree_sitter = None
     _GO_LANGUAGE = None
 
-GO_IMPORT_PREFIXES = ("crypto/rsa", "crypto/ecdsa", "crypto/elliptic", "crypto/dh", "golang.org/x/crypto")
+GO_IMPORT_PREFIXES = (
+    "crypto/rsa", "crypto/ecdsa", "crypto/elliptic", "crypto/dh", "golang.org/x/crypto",
+    "github.com/open-quantum-safe/liboqs-go",  # PQC: Kyber, Dilithium via liboqs
+)
+# Import path substring → primitive for PQC (so classifier maps to PQC_READY)
+GO_PQC_IMPORT_PRIMITIVE = "oqs"
 # (selector, func_name) -> primitive for high confidence
 GO_CALL_SIGNATURES = [
     (("rsa", "GenerateKey"), "rsa.GenerateKey"),
@@ -108,10 +113,13 @@ class _GoVisitor:
                             for prefix in GO_IMPORT_PREFIXES:
                                 if path == prefix or path.startswith(prefix + "/"):
                                     line = _node_line(node, self.source_bytes)
+                                    # PQC lib: report canonical primitive for classifier
+                                    primitive = GO_PQC_IMPORT_PRIMITIVE if "liboqs-go" in path or "open-quantum-safe" in path else path
+                                    lib = path.split("/")[0] if "/" in path else path
                                     self._add(
                                         line,
-                                        path,
-                                        path.split("/")[0] if "/" in path else path,
+                                        primitive,
+                                        lib,
                                         _get_line_snippet(self.source, line),
                                         "medium",
                                     )

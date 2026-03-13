@@ -20,6 +20,7 @@ CRYPTO_LIBRARIES = {
     "hmac",
     "rsa",
     "ecdsa",
+    "oqs",  # Open Quantum Safe / pyoqs – Kyber, Dilithium, etc.
 }
 
 # (module_or_attr_path, primitive_name) for high-confidence API detection
@@ -105,13 +106,16 @@ class _PythonVisitor(ast.NodeVisitor):
         mod = node.module
         for lib in CRYPTO_LIBRARIES:
             if mod == lib or mod.startswith(lib + "."):
+                base = mod.split(".")[0]
                 for alias in node.names:
                     name = alias.asname or alias.name
                     self._imported.add(name)
+                    # PQC lib (e.g. oqs): report canonical primitive so classifier maps to PQC_READY
+                    primitive = "oqs" if base == "oqs" else f"{mod}.{alias.name}"
                     self._add(
                         node.lineno,
-                        f"{mod}.{alias.name}",
-                        mod.split(".")[0],
+                        primitive,
+                        base,
                         f"from {mod} import {alias.name}" + (f" as {alias.asname}" if alias.asname else ""),
                         "medium",
                     )

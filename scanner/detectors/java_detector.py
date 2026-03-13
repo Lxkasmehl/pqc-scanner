@@ -21,11 +21,24 @@ except ImportError:
     _JAVA_LANGUAGE = None
 
 JAVA_IMPORT_PREFIXES = ("javax.crypto", "java.security", "org.bouncycastle")
+# PQC packages: map import path substring → primitive name for classifier (PQC_READY)
+JAVA_PQC_IMPORT_PRIMITIVES = {
+    "kyber": "kyber",
+    "dilithium": "dilithium",
+    "sphincs": "sphincs",
+    "ntru": "ntru",
+    "frodo": "frodo",
+    "saber": "saber",
+}
 GETINSTANCE_ALGOS = {
     "rsa", "ec", "ecdh", "diffiehellman", "dsa",
     "sha256withrsa", "sha384withrsa", "sha512withrsa",
     "sha256withecdsa", "sha384withecdsa", "sha512withecdsa",
     "aes", "sha-256", "sha-384", "sha-512",
+    # PQC (e.g. Bouncy Castle / JDK 21+)
+    "kyber", "kyber512", "kyber768", "kyber1024",
+    "dilithium", "dilithium2", "dilithium3", "dilithium5",
+    "mlkem", "mldsa", "sphincs",
 }
 
 
@@ -94,12 +107,19 @@ class _JavaVisitor:
                 c = node.child(i)
                 if c.type == "scoped_identifier" or c.type == "identifier":
                     imp = _get_text(self.source_bytes, c).strip()
+                    imp_lower = imp.lower()
                     for prefix in JAVA_IMPORT_PREFIXES:
                         if imp.startswith(prefix) or prefix in imp:
                             line = _node_line(node, self.source_bytes)
+                            # PQC packages: report algo name so classifier maps to PQC_READY
+                            primitive = imp
+                            for key, algo in JAVA_PQC_IMPORT_PRIMITIVES.items():
+                                if key in imp_lower:
+                                    primitive = algo
+                                    break
                             self._add(
                                 line,
-                                imp,
+                                primitive,
                                 imp.split(".")[0] if "." in imp else imp,
                                 _get_line_snippet(self.source, line),
                                 "medium",

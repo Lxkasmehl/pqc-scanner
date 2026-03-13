@@ -66,3 +66,17 @@ def test_python_detector_value_error_returns_empty():
     """
     findings = detector.detect(Path("x.py"), source)
     assert findings == []
+
+
+def test_python_detector_pqc_oqs_import():
+    """PQC-ready: import oqs (pyoqs / Open Quantum Safe) is detected and classifies as PQC_READY."""
+    from scanner.classifier import classify_primitive, PQC_READY
+    detector = PythonDetector()
+    path = FIXTURES_DIR / "pqc_sample.py"
+    source = path.read_text(encoding="utf-8")
+    findings = detector.detect(path, source)
+    assert findings, "expected at least one finding from pqc_sample.py"
+    oqs_findings = [f for f in findings if f.primitive == "oqs"]
+    assert oqs_findings, "expected primitive 'oqs' from import oqs"
+    for f in oqs_findings:
+        assert classify_primitive(f.primitive) == PQC_READY
