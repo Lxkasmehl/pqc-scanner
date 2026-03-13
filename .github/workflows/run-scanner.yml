@@ -114,7 +114,8 @@ jobs:
         run: |
           mkdir -p scanner results
           echo "Downloading state and results from run $RESUME_RUN_ID ..."
-          gh run download "$RESUME_RUN_ID" -n scanner-state -D . -R ${{ github.repository }}
+          # Artifact "scanner-state" contains state.db at root; extract into scanner/ so scanner/state.db exists
+          gh run download "$RESUME_RUN_ID" -n scanner-state -D scanner -R ${{ github.repository }}
           gh run download "$RESUME_RUN_ID" -n scanner-results -D results -R ${{ github.repository }} 2>/dev/null || true
           if [ -f scanner/state.db ]; then
             echo "Resuming from previous state"
