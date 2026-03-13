@@ -4,6 +4,7 @@ GitHub repository collector: search, clone (or fetch via API), scan, with rate l
 
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import time
@@ -479,15 +480,20 @@ def collect_and_scan_repos(
         logger.info("[{}/{}] {}", i + 1, len(to_scan), full_name)
         target = clone_root / f"pqc_scan_{repo_id}"
         if target.exists():
-            import shutil
             shutil.rmtree(target, ignore_errors=True)
         if not clone_repo(repo.get("clone_url", f"https://github.com/{full_name}.git"), target):
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
             continue
         try:
             result = scan_repository(target, exclude_tests=exclude_tests)
         except Exception as e:
             logger.warning("Could not scan repository {}: {}", full_name, e)
             continue
+        finally:
+            # Free disk: remove clone after scan so long runs don't fill the runner
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
         metadata = {
             "language": repo.get("language", ""),
             "stars": repo.get("stargazers_count", repo.get("stars", 0)),

@@ -56,6 +56,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Free disk space so long scan runs (500 repos) don't hit "No space left on device"
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo docker image prune --all --force 2>/dev/null || true
+          df -h
+
       - name: Get repo list run ID
         id: repo_list_run
         run: |
