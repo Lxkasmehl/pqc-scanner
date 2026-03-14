@@ -21,6 +21,7 @@ if str(_project_root) not in sys.path:
 
 from scanner.output import (
     build_aggregate_row,
+    enrich_aggregate_csv_from_state,
     get_raw_dir,
     print_repo_summary,
     rebuild_aggregate_csv_from_raw,
@@ -176,6 +177,26 @@ def rebuild_aggregate(
     """
     base = Path(results_dir or os.getenv("PQC_RESULTS_DIR", "results"))
     path = rebuild_aggregate_csv_from_raw(base)
+    logger.info("Aggregate CSV: {}", path)
+
+
+@app.command("enrich-aggregate")
+def enrich_aggregate(
+    results_dir: str = typer.Option(None, "--results-dir", help="Path to results/ (default: env PQC_RESULTS_DIR or 'results')"),
+    state_db: str = typer.Option(None, "--state-db", help="Path to scanner/state.db (default: scanner/state.db)"),
+) -> None:
+    """
+    Fill language, stars, forks, created_at, size, topics in aggregate.csv from scanner state DB.
+    Use after rebuild-aggregate when the CSV was built only from raw JSONs (no metadata).
+    Requires the state.db from the same run (e.g. from the scanner-state artifact).
+    """
+    base = Path(results_dir or os.getenv("PQC_RESULTS_DIR", "results"))
+    db_path = Path(state_db or str(_project_root / "scanner" / "state.db"))
+    from scanner.github_collector import get_scanned_repos_metadata
+    metadata = get_scanned_repos_metadata(db_path)
+    if not metadata:
+        logger.warning("No metadata in state DB at {} (or file missing). Copy scanner-state artifact to scanner/state.db.", db_path)
+    path = enrich_aggregate_csv_from_state(base, db_path, metadata)
     logger.info("Aggregate CSV: {}", path)
 
 

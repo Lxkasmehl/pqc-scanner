@@ -80,6 +80,21 @@ def init_state_db(db_path: Path) -> None:
         """)
 
 
+def get_scanned_repos_metadata(db_path: Path) -> dict[str, dict[str, Any]]:
+    """Load repo_id -> metadata for all scanned repos from state DB (for enriching CSV after rebuild)."""
+    db_path = Path(db_path)
+    if not db_path.is_file():
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    with sqlite3.connect(db_path) as conn:
+        for (repo_id, metadata_json) in conn.execute("SELECT repo_id, metadata FROM scanned_repos"):
+            try:
+                out[repo_id] = json.loads(metadata_json) if metadata_json else {}
+            except Exception:
+                continue
+    return out
+
+
 def is_already_scanned(repo_id: str, db_path: Path) -> bool:
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute("SELECT 1 FROM scanned_repos WHERE repo_id = ?", (repo_id,))

@@ -82,6 +82,50 @@ def rebuild_aggregate_csv_from_raw(results_root: Path) -> Path:
     return results_root / "aggregate.csv"
 
 
+def enrich_aggregate_csv_from_state(
+    results_root: Path,
+    state_db_path: Path,
+    metadata_by_repo_id: dict[str, dict[str, Any]],
+) -> Path:
+    """
+    Fill in language, stars, forks, created_at, size, topics in aggregate.csv from state DB metadata.
+    metadata_by_repo_id is repo_id (owner_repo) -> metadata dict from get_scanned_repos_metadata().
+    """
+    csv_path = results_root / "aggregate.csv"
+    if not csv_path.is_file():
+        logger.warning("No aggregate.csv at {}", csv_path)
+        return csv_path
+    rows: list[dict[str, Any]] = []
+    with open(csv_path, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        for row in reader:
+            repo_name = (row.get("repo_name") or "").strip()
+            if not repo_name:
+                rows.append(row)
+                continue
+            repo_id = repo_name.replace("/", "_")
+            meta = metadata_by_repo_id.get(repo_id)
+            if meta:
+                row["language"] = meta.get("language", "")
+                row["stars"] = meta.get("stars", meta.get("stargazers_count", ""))
+                row["forks"] = meta.get("forks", meta.get("forks_count", ""))
+                row["created_at"] = meta.get("created_at", "")
+                row["size"] = meta.get("size", "")
+                topics = meta.get("topics", [])
+                row["topics"] = "|".join(topics) if isinstance(topics, list) else str(topics or "")
+            rows.append(row)
+    if not fieldnames:
+        return csv_path
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    filled = sum(1 for r in rows if metadata_by_repo_id.get((r.get("repo_name") or "").replace("/", "_")))
+    logger.info("Enriched aggregate CSV: {} rows, {} with metadata from state DB", len(rows), filled)
+    return csv_path
+
+
 def write_aggregate_csv(results_root: Path, rows: list[dict[str, Any]]) -> Path:
     """
     Write results/aggregate.csv with one row per repo.
