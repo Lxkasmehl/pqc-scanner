@@ -10,6 +10,8 @@ from typing import Any
 
 from loguru import logger
 
+from scanner.classifier import get_canonical_primitive_key
+
 
 def get_raw_dir(results_root: Path) -> Path:
     """Ensure results/raw exists and return it."""
@@ -261,9 +263,12 @@ def compute_report(raw_dir: Path, aggregate_path: Path | None = None) -> dict[st
             by_language[lang]["with_pqc"] += 1
 
         for f in data.get("findings", []):
-            prim = (f.get("primitive") or "").strip()
-            if not prim:
+            raw_prim = (f.get("primitive") or "").strip()
+            if not raw_prim:
                 continue
+            prim = get_canonical_primitive_key(raw_prim)
+            if not prim:
+                prim = raw_prim
             cl = f.get("classification", "unknown")
             primitive_counts[prim] += 1
             if cl in primitive_by_class:

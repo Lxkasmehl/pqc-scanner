@@ -1,6 +1,12 @@
 """
 Go detector using tree-sitter. Detects crypto/rsa, crypto/ecdsa, crypto/elliptic,
-crypto/dh, golang.org/x/crypto and function calls like rsa.GenerateKey, ecdsa.GenerateKey, elliptic.P256.
+crypto/dh, crypto/tls, crypto/x509, golang.org/x/crypto and function calls like
+rsa.GenerateKey, ecdsa.GenerateKey, elliptic.P256.
+
+Methodologic note: Many Go services use TLS (crypto/tls) or X.509 (crypto/x509)
+with RSA/ECDSA certificates without explicit key generation in code. Import-based
+detection of crypto/tls and crypto/x509 is therefore included and classified as
+post-quantum-vulnerable (medium confidence) for the paper.
 """
 from __future__ import annotations
 
@@ -20,12 +26,22 @@ except ImportError:
     tree_sitter = None
     _GO_LANGUAGE = None
 
-GO_IMPORT_PREFIXES = (
-    "crypto/rsa", "crypto/ecdsa", "crypto/elliptic", "crypto/dh", "golang.org/x/crypto",
-    "github.com/open-quantum-safe/liboqs-go",  # PQC: Kyber, Dilithium via liboqs
-)
-# Import path substring → primitive for PQC (so classifier maps to PQC_READY)
-GO_PQC_IMPORT_PRIMITIVE = "oqs"
+# Import path -> (primitive for report, confidence). Order matters: check specific before prefixes.
+GO_IMPORT_PRIMITIVE_MAP: list[tuple[str, str, str]] = [
+    # PQC (report as oqs for classifier)
+    ("github.com/open-quantum-safe/liboqs-go", "oqs", "medium"),
+    ("github.com/open-quantum-safe/", "oqs", "medium"),
+    # Classic PKI: explicit packages
+    ("crypto/rsa", "crypto/rsa", "medium"),
+    ("crypto/ecdsa", "crypto/ecdsa", "medium"),
+    ("crypto/elliptic", "crypto/elliptic", "medium"),
+    ("crypto/dh", "crypto/dh", "medium"),
+    # TLS/X.509: implies RSA/ECDSA certs in practice (methodologic note in paper)
+    ("crypto/tls", "tls", "medium"),
+    ("crypto/x509", "x509", "medium"),
+    # Catch-all for golang.org/x/crypto (may include classic or PQC)
+    ("golang.org/x/crypto", "golang.org/x/crypto", "low"),
+]
 # (selector, func_name) -> primitive for high confidence
 GO_CALL_SIGNATURES = [
     (("rsa", "GenerateKey"), "rsa.GenerateKey"),
@@ -110,18 +126,17 @@ class _GoVisitor:
                         raw = _get_text(self.source_bytes, path_node)
                         if len(raw) >= 2:
                             path = raw[1:-1].strip()
-                            for prefix in GO_IMPORT_PREFIXES:
-                                if path == prefix or path.startswith(prefix + "/"):
+                            for prefix, primitive, confidence in GO_IMPORT_PRIMITIVE_MAP:
+                                p = prefix.rstrip("/")
+                                if path == p or path.startswith(p + "/"):
                                     line = _node_line(node, self.source_bytes)
-                                    # PQC lib: report canonical primitive for classifier
-                                    primitive = GO_PQC_IMPORT_PRIMITIVE if "liboqs-go" in path or "open-quantum-safe" in path else path
                                     lib = path.split("/")[0] if "/" in path else path
                                     self._add(
                                         line,
                                         primitive,
                                         lib,
                                         _get_line_snippet(self.source, line),
-                                        "medium",
+                                        confidence,
                                     )
                                     break
             return

@@ -38,6 +38,9 @@ PRIMITIVE_CLASSIFICATION: dict[str, str] = {
     "prime256v1": VULNERABLE,
     "ed25519": VULNERABLE,  # signature; not PQ-vulnerable in same way but often grouped
     "x25519": VULNERABLE,
+    # TLS/X.509 usage (implies classic RSA/ECDSA in practice; methodologic note in paper)
+    "tls": VULNERABLE,
+    "x509": VULNERABLE,
     # Java getInstance strings
     "rsa/ecb/pkcs1padding": VULNERABLE,
     "rsa/ecb/oaepwithsha-1andmgf1padding": VULNERABLE,
@@ -97,6 +100,54 @@ def normalize_primitive_name(name: str) -> str:
     if not name or not isinstance(name, str):
         return ""
     return name.strip().lower().replace(" ", "_").replace("-", "").replace(".", "")
+
+
+def get_canonical_primitive_key(primitive_name: str) -> str:
+    """
+    Return a single canonical key for report aggregation so that RSA, ECDSA, crypto/rsa,
+    rsa.GenerateKey, sphincs, sphincs+, DiffieHellman/diffiehellman are each grouped as one.
+    Used in compute_report to avoid duplicate entries in top-primitives tables.
+    """
+    if not primitive_name or not isinstance(primitive_name, str):
+        return ""
+    n = normalize_primitive_name(primitive_name)
+    if not n:
+        return ""
+
+    # Go import paths: crypto/rsa, crypto/ecdsa, crypto/elliptic, crypto/dh
+    if "/" in n:
+        segment = n.split("/")[-1]
+        if segment == "rsa":
+            return "rsa"
+        if segment == "ecdsa":
+            return "ecdsa"
+        if segment == "elliptic":
+            return "ec"
+        if segment == "dh":
+            return "diffiehellman"
+        if segment == "tls":
+            return "tls"
+        if segment == "x509":
+            return "x509"
+
+    # Go call-style: rsa.GenerateKey -> rsageneratekey; map to rsa/ecdsa/ec
+    if n.startswith("rsa"):
+        return "rsa"
+    if n.startswith("ecdsa"):
+        return "ecdsa"
+    if n.startswith("elliptic"):
+        return "ec"
+
+    # Unify SPHINCS variants for reporting
+    if n in ("sphincs", "sphincs+"):
+        return "sphincs+"
+
+    # Unify Diffie-Hellman spellings
+    if n == "diffie_hellman":
+        return "diffiehellman"
+
+    # Already normalized; use as-is for grouping (e.g. sha256withrsa, kyber512)
+    return n
 
 
 def classify_primitive(primitive_name: str) -> str:

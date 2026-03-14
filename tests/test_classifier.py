@@ -8,6 +8,7 @@ from scanner.classifier import (
     UNKNOWN,
     PRIMITIVE_CLASSIFICATION,
     classify_primitive,
+    get_canonical_primitive_key,
     normalize_primitive_name,
 )
 
@@ -55,3 +56,21 @@ def test_primitive_classification_extensible():
     assert "rsa" in PRIMITIVE_CLASSIFICATION
     assert "aes" in PRIMITIVE_CLASSIFICATION
     assert "kyber" in PRIMITIVE_CLASSIFICATION
+
+
+def test_get_canonical_primitive_key():
+    # Duplicates merged for report aggregation
+    assert get_canonical_primitive_key("RSA") == "rsa"
+    assert get_canonical_primitive_key("ECDSA") == "ecdsa"
+    assert get_canonical_primitive_key("ecdsa") == "ecdsa"
+    assert get_canonical_primitive_key("crypto/rsa") == "rsa"
+    assert get_canonical_primitive_key("crypto/ecdsa") == "ecdsa"
+    assert get_canonical_primitive_key("rsa.GenerateKey") == "rsa"
+    assert get_canonical_primitive_key("ecdsa.GenerateKey") == "ecdsa"
+    assert get_canonical_primitive_key("elliptic.P256") == "ec"
+    assert get_canonical_primitive_key("sphincs") == "sphincs+"
+    assert get_canonical_primitive_key("sphincs+") == "sphincs+"
+    assert get_canonical_primitive_key("DiffieHellman") == "diffiehellman"
+    assert get_canonical_primitive_key("diffie_hellman") == "diffiehellman"
+    assert get_canonical_primitive_key("crypto/tls") == "tls"
+    assert get_canonical_primitive_key("crypto/x509") == "x509"

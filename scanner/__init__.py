@@ -10,6 +10,7 @@ from scanner.classifier import (
     UNKNOWN,
     PRIMITIVE_CLASSIFICATION,
     classify_primitive,
+    get_canonical_primitive_key,
     normalize_primitive_name,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "UNKNOWN",
     "PRIMITIVE_CLASSIFICATION",
     "classify_primitive",
+    "get_canonical_primitive_key",
     "normalize_primitive_name",
 ]

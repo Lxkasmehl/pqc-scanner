@@ -83,7 +83,9 @@ python cli.py report
 python cli.py report --output report.md
 ```
 
-The report includes: sample size, % repos with vulnerable primitives, % with PQC-ready primitives, counts by language, top vulnerable/PQC-ready primitives, and vulnerable findings in production vs test code.
+The report includes: sample size, % repos with vulnerable primitives, % with PQC-ready primitives, counts by language, top vulnerable/PQC-ready primitives, and vulnerable findings in production vs test code. Primitive names are aggregated by a canonical key (e.g. RSA, ECDSA, `crypto/rsa`, `rsa.GenerateKey` merged) so the top-primitives tables are not split by spelling or language.
+
+For methodological caveats (test/vendor heuristics, Go TLS detection, PQC adoption by language), see **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
 
 ## Configuration (.env)
 
@@ -120,7 +122,8 @@ pqc-scanner/
 │   ├── raw/              # Per-repo JSON
 │   └── aggregate.csv     # One row per repo
 ├── docs/
-│   └── SCALING.md       # Running at 10k–50k repos (Codespaces, BigQuery)
+│   ├── SCALING.md       # Running at 10k–50k repos (Codespaces, BigQuery)
+│   └── METHODOLOGY.md   # Paper: normalisation, Go TLS, test/vendor, PQC adoption
 ├── cli.py
 ├── .env.example
 ├── requirements.txt
