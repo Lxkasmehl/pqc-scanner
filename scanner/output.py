@@ -43,6 +43,45 @@ def print_repo_summary(result: dict[str, Any]) -> None:
           f"Vulnerability score: {s.get('vulnerability_score', 0.0):.4f}")
 
 
+def rebuild_aggregate_csv_from_raw(results_root: Path) -> Path:
+    """
+    Rebuild results/aggregate.csv from all results/raw/*.json.
+    Use after resuming from artifacts so the CSV matches the raw folder (one row per JSON).
+    """
+    raw_dir = results_root / "raw"
+    if not raw_dir.is_dir():
+        logger.warning("No raw directory at {}", raw_dir)
+        return results_root / "aggregate.csv"
+    rows: list[dict[str, Any]] = []
+    for jpath in sorted(raw_dir.glob("*.json")):
+        try:
+            data = json.loads(jpath.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.debug("Skip {}: {}", jpath.name, e)
+            continue
+        repo_name = jpath.stem.replace("_", "/", 1) if "_" in jpath.stem else jpath.stem
+        s = data.get("summary", {})
+        rows.append({
+            "repo_name": repo_name,
+            "language": "",
+            "stars": "",
+            "forks": "",
+            "created_at": "",
+            "size": "",
+            "topics": "",
+            "total_findings": s.get("total_findings", 0),
+            "vulnerable_count": s.get("vulnerable_count", 0),
+            "safe_count": s.get("safe_count", 0),
+            "pqc_ready_count": s.get("pqc_ready_count", 0),
+            "has_vulnerable": s.get("has_vulnerable_primitives", False),
+            "vulnerability_score": s.get("vulnerability_score", 0.0),
+        })
+    write_aggregate_csv(results_root, rows)
+    n_raw = len(list(raw_dir.glob("*.json")))
+    logger.info("Rebuilt aggregate CSV: {} raw JSONs → {} rows", n_raw, len(rows))
+    return results_root / "aggregate.csv"
+
+
 def write_aggregate_csv(results_root: Path, rows: list[dict[str, Any]]) -> Path:
     """
     Write results/aggregate.csv with one row per repo.

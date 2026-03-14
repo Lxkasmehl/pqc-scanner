@@ -41,6 +41,8 @@ The GitHub Search API returns **at most 1,000 results per query**. To build a da
 
    **Run the scanner in GitHub Actions:** You can also run the scanner in the cloud without Oracle or a VM. Use **Actions → Run scanner (from list)**. Each run has a 6-hour job limit; the scan step stops after 5 hours so that state and results are always uploaded (even on timeout). Use a batch size that finishes within that window (e.g. `limit` 500–4000 depending on speed). You must pass the **Run ID** of a completed "Build repo list" run so the workflow can download the repo list artifact. To process more repos, run the workflow again and set **Resume from run ID** to the previous "Run scanner" run; it will download `state.db` and `results/` and continue. **Important:** If a run hits the timeout, you still get `scanner-state` and `scanner-results` artifacts from that run, so you can resume from it. Download the artifacts from each run if you want to merge or keep them locally. `results/` and `scanner/state.db` are in `.gitignore` and must not be committed.
 
+   **Artifact `scanner-results`:** The workflow rebuilds `aggregate.csv` from all `results/raw/*.json` before upload, so the CSV should have one row per raw file. If you have an older artifact where the CSV has fewer rows than the raw folder, extract the artifact into a `results/` directory (with `raw/` and optionally the old `aggregate.csv`), then run locally: `python cli.py rebuild-aggregate` to regenerate a full CSV from the raw folder. You can then use `report` and the CSV for your paper.
+
 ## Option B: GitHub Archive / BigQuery (largest scale)
 
 If you have access to [BigQuery and the GitHub dataset](https://www.gharchive.org/), you can export a repo list that is not limited by the Search API:

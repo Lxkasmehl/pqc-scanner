@@ -510,10 +510,11 @@ def collect_and_scan_repos(
         aggregate_rows.append(build_aggregate_row(full_name, result, metadata))
 
     # Rebuild full aggregate from all raw JSONs so CSV includes every scanned repo
-    raw_dir = results_dir / "raw"
+    raw_dir = results_dir.resolve() / "raw"
     if raw_dir.is_dir():
+        raw_files = list(raw_dir.glob("*.json"))
         by_name: dict[str, dict[str, Any]] = {}
-        for jpath in raw_dir.glob("*.json"):
+        for jpath in raw_files:
             try:
                 data = json.loads(jpath.read_text(encoding="utf-8"))
             except Exception:
@@ -538,5 +539,11 @@ def collect_and_scan_repos(
         for row in aggregate_rows:
             by_name[row["repo_name"]] = row
         aggregate_rows = list(by_name.values())
+        logger.info(
+            "Rebuild aggregate: {} raw JSONs → {} CSV rows (this run: {})",
+            len(raw_files), len(aggregate_rows), len(to_scan),
+        )
+    else:
+        logger.warning("No raw dir at {}; CSV will have only current run ({} rows)", raw_dir, len(aggregate_rows))
 
     write_aggregate_csv(results_dir, aggregate_rows)

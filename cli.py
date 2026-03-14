@@ -23,6 +23,7 @@ from scanner.output import (
     build_aggregate_row,
     get_raw_dir,
     print_repo_summary,
+    rebuild_aggregate_csv_from_raw,
     save_repo_json,
     write_aggregate_csv,
 )
@@ -163,6 +164,19 @@ def export_repos(
         created_year_start=years_start,
         created_year_end=years_end,
     )
+
+
+@app.command("rebuild-aggregate")
+def rebuild_aggregate(
+    results_dir: str = typer.Option(None, "--results-dir", help="Path to results/ (default: env PQC_RESULTS_DIR or 'results')"),
+) -> None:
+    """
+    Rebuild results/aggregate.csv from all results/raw/*.json.
+    Use after downloading scanner-results from a resumed run so the CSV has one row per raw file.
+    """
+    base = Path(results_dir or os.getenv("PQC_RESULTS_DIR", "results"))
+    path = rebuild_aggregate_csv_from_raw(base)
+    logger.info("Aggregate CSV: {}", path)
 
 
 @app.command()

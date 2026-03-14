@@ -142,6 +142,11 @@ jobs:
         run: |
           python cli.py collect --from-file repo_list.jsonl --limit $LIMIT ${{ inputs.verbose && '--verbose' || '' }}
 
+      # Rebuild aggregate.csv from all results/raw/*.json so CSV matches raw (important after resume)
+      - name: Rebuild aggregate CSV from raw
+        if: always()
+        run: python cli.py rebuild-aggregate
+
       # Run even when scan step fails or times out, so we keep state/results for resume
       - name: Upload scanner state
         if: always()
