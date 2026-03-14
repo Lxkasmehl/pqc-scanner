@@ -2,6 +2,10 @@
 # Each run can process a batch (e.g. 500 repos) within the 6h Actions limit.
 # To continue, run again with "Resume from run ID" set to the previous scanner run.
 # results/ and scanner/state.db are in .gitignore; never committed.
+#
+# Scan step is limited to 5h so that on timeout the job still runs the upload steps
+# and artifacts (state + results) are saved. Without this, a 6h job timeout kills the
+# job before any upload → no artifacts, no resume possible.
 
 name: Run scanner (from list)
 
@@ -134,16 +138,20 @@ jobs:
       - name: Run scanner
         env:
           LIMIT: ${{ inputs.limit || 500 }}
+        timeout-minutes: 300   # 5h so upload steps run before 6h job timeout
         run: |
           python cli.py collect --from-file repo_list.jsonl --limit $LIMIT ${{ inputs.verbose && '--verbose' || '' }}
 
+      # Run even when scan step fails or times out, so we keep state/results for resume
       - name: Upload scanner state
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: scanner-state
           path: scanner/state.db
 
       - name: Upload results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: scanner-results

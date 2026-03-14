@@ -21,3 +21,5 @@ scanner/**/*.sqlite
 # docs/ except SCALING.md (keep scaling guide in repo)
 docs/*
 !docs/SCALING.md
+
+.vscode/
