@@ -41,9 +41,21 @@ The GitHub Search API returns **at most 1,000 results per query**. To build a da
 
    **Run the scanner in GitHub Actions:** You can also run the scanner in the cloud without Oracle or a VM. Use **Actions → Run scanner (from list)**. Each run has a 6-hour job limit; the scan step stops after 5 hours so that state and results are always uploaded (even on timeout). Use a batch size that finishes within that window (e.g. `limit` 500–4000 depending on speed). You must pass the **Run ID** of a completed "Build repo list" run so the workflow can download the repo list artifact. To process more repos, run the workflow again and set **Resume from run ID** to the previous "Run scanner" run; it will download `state.db` and `results/` and continue. **Important:** If a run hits the timeout, you still get `scanner-state` and `scanner-results` artifacts from that run, so you can resume from it. Download the artifacts from each run if you want to merge or keep them locally. `results/` and `scanner/state.db` are in `.gitignore` and must not be committed.
 
-   **Artifact `scanner-results`:** The workflow rebuilds `aggregate.csv` from all `results/raw/*.json` before upload, so the CSV should have one row per raw file. If you have an older artifact where the CSV has fewer rows than the raw folder, extract the artifact into a `results/` directory (with `raw/` and optionally the old `aggregate.csv`), then run locally: `python cli.py rebuild-aggregate` to regenerate a full CSV from the raw folder.
+   **Artifact `scanner-results`:** The workflow rebuilds `aggregate.csv` from all `results/raw/*.json` before upload, so the CSV should have one row per raw file. If you have an older artifact where the CSV has fewer rows than the raw folder, extract the artifact into a `results/` directory (with `raw/` and optionally the old `aggregate.csv`), then run locally:
 
-   **Missing language/stars/forks in CSV:** If you ran `rebuild-aggregate` and the CSV has empty language, stars, forks, etc., those fields are not stored in the raw JSONs—they come from the scanner state DB. Download the **scanner-state** artifact from the same run (or the run that produced those scans), extract it so that `scanner/state.db` exists (e.g. create a `scanner` folder and put the artifact’s `state.db` there), then run: `python cli.py enrich-aggregate`. This fills language, stars, forks, created_at, size, and topics in `aggregate.csv` from the state DB. No re-scan needed.
+   ```bash
+   python cli.py rebuild-aggregate
+   ```
+
+   This regenerates a full CSV from the raw folder.
+
+   **Missing language/stars/forks in CSV:** If you ran `rebuild-aggregate` and the CSV has empty language, stars, forks, etc., those fields are not stored in the raw JSONs—they come from the scanner state DB. Download the **scanner-state** artifact from the same run (or the run that produced those scans), extract it so that `scanner/state.db` exists (e.g. create a `scanner` folder and put the artifact’s `state.db` there), then run:
+
+   ```bash
+   python cli.py enrich-aggregate
+   ```
+
+   This fills language, stars, forks, created_at, size, and topics in `aggregate.csv` from the state DB. No re-scan needed.
 
 ## Option B: GitHub Archive / BigQuery (largest scale)
 

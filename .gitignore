@@ -22,6 +22,10 @@ scanner/**/*.sqlite
 docs/*
 !docs/SCALING.md
 
-paper/
-
 .vscode/
+pip-log.txt
+
+evaluation/ground_truth.csv
+
+# evaluation: cloned repos (default clone dir on run_evaluation)
+eval_clones/

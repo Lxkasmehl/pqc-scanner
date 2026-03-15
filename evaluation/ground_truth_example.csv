@@ -1,0 +1,2 @@
+repo_id,has_vulnerable,has_pqc_ready,local_path,notes
+fixtures,1,1,../tests/fixtures,Local: sample + pqc_sample (vulnerable and PQC-ready)

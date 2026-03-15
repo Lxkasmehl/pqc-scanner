@@ -363,12 +363,20 @@ def export_repos_stratified(
 
 def clone_repo(clone_url: str, target_dir: Path, depth: int = 1) -> bool:
     """Shallow clone into target_dir. Returns True on success."""
+    target_dir = Path(target_dir).resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
     cmd = ["git", "clone", "--depth", str(depth), clone_url, str(target_dir)]
+    # On Windows, long paths in repos can cause exit 128; enable long paths for the clone
+    if os.name == "nt":
+        cmd = ["git", "clone", "-c", "core.longpaths=true", "--depth", str(depth), clone_url, str(target_dir)]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if r.returncode == 0:
+            return True
+        err = (r.stderr or r.stdout or "").strip() or f"exit code {r.returncode}"
+        logger.warning("Clone failed: {} -> {}", clone_url, err[:500])
+        return False
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
         logger.warning("Clone failed: {}", e)
         return False
 

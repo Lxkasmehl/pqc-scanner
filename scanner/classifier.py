@@ -153,11 +153,17 @@ def get_canonical_primitive_key(primitive_name: str) -> str:
 def classify_primitive(primitive_name: str) -> str:
     """
     Classify a primitive name into one of: VULNERABLE, SAFE, PQC_READY, UNKNOWN.
-    Uses PRIMITIVE_CLASSIFICATION with normalized key; returns UNKNOWN if not found.
+    Uses PRIMITIVE_CLASSIFICATION with normalized key. If the full key is not found,
+    tries segment-based lookup (e.g. "Crypto.PublicKey.RSA" -> "rsa", "RSA.generate" -> "rsa").
     """
     if not primitive_name:
         return UNKNOWN
     key = normalize_primitive_name(primitive_name)
     if key in PRIMITIVE_CLASSIFICATION:
         return PRIMITIVE_CLASSIFICATION[key]
+    # Segment-based fallback for detector output like "Crypto.PublicKey.RSA", "RSA.generate"
+    for part in primitive_name.replace("/", ".").split("."):
+        k = normalize_primitive_name(part)
+        if k in PRIMITIVE_CLASSIFICATION:
+            return PRIMITIVE_CLASSIFICATION[k]
     return UNKNOWN
