@@ -158,4 +158,4 @@ Extend `scanner/classifier.py` → `PRIMITIVE_CLASSIFICATION` to add more mappin
 
 ## License
 
-Use for research and prototyping as needed.
+MIT License. See [LICENSE](LICENSE) for details. Use for research and prototyping as needed.

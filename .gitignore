@@ -22,4 +22,6 @@ scanner/**/*.sqlite
 docs/*
 !docs/SCALING.md
 
+paper/
+
 .vscode/
