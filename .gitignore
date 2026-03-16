@@ -26,6 +26,9 @@ docs/*
 pip-log.txt
 
 evaluation/ground_truth.csv
+evaluation/ground_truth_curated.csv
+evaluation/verification_report.md
+evaluation/verification_reports/
 
 # evaluation: cloned repos (default clone dir on run_evaluation)
 eval_clones/

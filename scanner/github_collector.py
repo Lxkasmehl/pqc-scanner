@@ -369,8 +369,9 @@ def clone_repo(clone_url: str, target_dir: Path, depth: int = 1) -> bool:
     # On Windows, long paths in repos can cause exit 128; enable long paths for the clone
     if os.name == "nt":
         cmd = ["git", "clone", "-c", "core.longpaths=true", "--depth", str(depth), clone_url, str(target_dir)]
+    timeout_sec = int(os.getenv("PQC_CLONE_TIMEOUT", "300"))
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
         if r.returncode == 0:
             return True
         err = (r.stderr or r.stdout or "").strip() or f"exit code {r.returncode}"
@@ -385,19 +386,25 @@ def clone_and_scan_repo(
     owner_repo: str,
     exclude_tests: bool = True,
     clone_root: Path | None = None,
+    use_existing_clones: bool = False,
 ) -> tuple[dict[str, Any] | None, Path | None]:
     """
     Clone owner/repo (shallow), scan it, return (result, repo_path).
     If clone_root is None, uses env PQC_CLONE_DIR or a temp dir (caller must clean up).
+    If use_existing_clones is True and target already exists, skip clone and just scan
+    (so you can manually clone large repos and re-run evaluation).
     """
     import tempfile
     clone_root = clone_root or Path(os.getenv("PQC_CLONE_DIR", tempfile.gettempdir()))
-    # Fetch clone URL if not provided
     if "/" not in owner_repo:
         return None, None
     owner, name = owner_repo.split("/", 1)
     clone_url = f"https://github.com/{owner}/{name}.git"
     target = clone_root / f"pqc_scan_{owner}_{name}".replace(" ", "_")
+    if target.exists() and use_existing_clones:
+        # Use existing clone (e.g. manually cloned with longer timeout)
+        result = scan_repository(target, exclude_tests=exclude_tests)
+        return result, target
     if target.exists():
         import shutil
         shutil.rmtree(target, ignore_errors=True)

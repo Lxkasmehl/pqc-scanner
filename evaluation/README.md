@@ -1,57 +1,54 @@
-# Scanner Evaluation (Repo-Level)
+# Scanner evaluation (repo-level)
 
-This folder contains tools to evaluate the PQC scanner against a **ground-truth** set of repositories, so you can report precision/recall in the paper (Section 4 – Evaluation).
+Evaluate the PQC scanner against a **ground-truth CSV**: clone (or use local paths), scan, compare to labels, report precision/recall and optionally a verification report.
 
 ## Quick start
 
-1. **Create a ground-truth CSV** (see format below). You can copy `ground_truth_example.csv` and add your own repos. Alternatively, **seed from scan results**: pick repos from `results/aggregate.csv`, add them with the scanner’s prediction as initial labels, then manually verify on GitHub and correct the CSV (see **Backwards** in `docs/EVALUATION.md`).
-2. **Run the evaluation** from the **project root**:
-   ```bash
-   python evaluation/run_evaluation.py --ground-truth evaluation/ground_truth.csv
-   ```
-   The script will clone each `repo_id` (GitHub `owner/name`), run the scanner, and compare the scanner’s “has vulnerable” / “has PQC-ready” to your labels.
-3. **Verification report (recommended):** To verify labels without searching huge repos, run once with `--write-verification-report`. This writes **evaluation/verification_report.md** with **direct GitHub links to each finding** (file and line). Open the report, click the links, and only check those lines; then correct `ground_truth.csv` where the scanner was wrong.
-   ```bash
-   python evaluation/run_evaluation.py --ground-truth evaluation/ground_truth.csv --write-verification-report
-   ```
-5. **Optional: use local paths only** (no cloning), e.g. for fixtures or pre-cloned repos:
-   ```bash
-   python evaluation/run_evaluation.py --ground-truth evaluation/ground_truth.csv --no-clone
-   ```
-   Only rows with a non-empty `local_path` are evaluated.
+From the **project root**:
 
-## Ground-truth CSV format
+```bash
+python evaluation/run_evaluation.py -g evaluation/ground_truth_curated.csv --write-verification-report
+```
+
+- Reads the CSV, clones each GitHub repo (or uses `local_path` if set), runs the scanner, compares repo-level “has vulnerable” / “has PQC-ready” to your labels.
+- Writes **evaluation/verification_report.md** (one short summary by default).
+- Prints counts, precision/recall/F1 for both tasks, and any mismatches/errors.
+
+## Ground-truth CSV
 
 | Column           | Required | Description |
 |------------------|----------|-------------|
 | `repo_id`        | yes      | GitHub `owner/name` (e.g. `pyca/cryptography`) or any id when using `local_path`. |
-| `has_vulnerable` | yes      | `1` = repo is expected to have ≥1 post-quantum-vulnerable primitive, `0` = not. |
-| `has_pqc_ready`  | yes      | `1` = repo is expected to have ≥1 PQC-ready primitive (Kyber, Dilithium, oqs), `0` = not. |
-| `local_path`     | no       | If set, this path is scanned instead of cloning `repo_id`. Can be relative to the CSV file. |
-| `notes`          | no       | Optional note (e.g. "RSA only"). |
+| `has_vulnerable` | yes      | `1` = repo expected to have ≥1 post-quantum-vulnerable primitive, `0` = not. |
+| `has_pqc_ready`  | yes      | `1` = repo expected to have ≥1 PQC-ready primitive, `0` = not. |
+| `local_path`     | no       | If set, scan this path instead of cloning `repo_id`. Relative to CSV file or absolute. |
+| `notes`         | no       | Optional (e.g. "RSA only"). |
 
 Example:
 
 ```csv
 repo_id,has_vulnerable,has_pqc_ready,local_path,notes
 pyca/cryptography,1,0,,RSA, ECDSA
-open-quantum-safe/liboqs,0,1,,liboqs
-my/local/repo,1,0,/path/to/clone,local clone
+open-quantum-safe/liboqs-python,0,1,,OQS bindings
+fixtures,1,1,../tests/fixtures,Local fixtures
 ```
+
+## Useful options
+
+- **`--use-existing-clones`** — Use repos already cloned under clone-dir (e.g. you cloned some manually). Repos **not** yet cloned are still cloned. So you can extend the CSV and mix existing clones with new ones.
+- **`--report-style full`** — Write index + one Markdown file per repo (findings with GitHub links). Default is `summary` (one short file).
+- **`--from-raw`** — No cloning: use existing **results/raw/*.json** from a prior scanner run. Repos missing in raw/ are skipped.
+- **`--no-clone`** — Only evaluate rows that have `local_path` set (no GitHub clone).
+- **`--clone-dir PATH`** — Where to clone (default: **eval_clones**). Env: `PQC_CLONE_DIR`.
+- **`PQC_CLONE_TIMEOUT`** — Clone timeout in seconds (default 300). Increase for large repos.
+
+See the script docstring (`evaluation/run_evaluation.py`) for manual-clone path format and full options.
 
 ## Verification report
 
-If you pass `--write-verification-report`, the script writes a Markdown file (default: **evaluation/verification_report.md**) with one section per repo. Each section lists every finding with type (vulnerable / safe / PQC-ready), primitive name, file:line, and a **link that opens that exact line on GitHub**. Use it to verify the scanner’s results without searching the repo; then fix `ground_truth.csv` and re-run the evaluation.
+With `--write-verification-report`:
 
-## Output
+- **summary** (default): One Markdown file with counts, metrics table, and per-repo one-liner (expected vs predicted, OK/error).
+- **full**: Index file plus one file per repo with each finding and a link to the line on GitHub (for spot-checking and correcting labels).
 
-The script prints:
-
-- **Counts:** how many rows were evaluated and how many failed (clone/scan error).
-- **Metrics** for the two binary tasks:
-  - **has_vulnerable:** precision, recall, F1 (and TP/FP/TN/FN).
-  - **has_pqc_ready:** precision, recall, F1.
-- **Mismatches:** repos where the scanner’s prediction disagreed with the ground truth.
-- **Errors:** repos that could not be cloned or scanned.
-
-Use these numbers in the paper (Section 4) and mention sample size and threats to validity; see `docs/EVALUATION.md` for the full evaluation workflow and how to find repos to annotate.
+For the full evaluation workflow (finding repos, labelling, what to report in the paper), see **docs/EVALUATION.md**.
