@@ -69,8 +69,11 @@ def _register_go_detector():
 def _language_stats(repo_path: Path) -> dict[str, int]:
     stats = {"python": 0, "java": 0, "go": 0}
     for path in repo_path.rglob("*"):
-        if not path.is_file():
-            continue
+        try:
+            if not path.is_file():
+                continue
+        except OSError:
+            continue  # skip symlinks, permission errors, long paths on Windows
         ext = path.suffix.lower()
         if ext == ".py":
             stats["python"] += 1
@@ -100,8 +103,11 @@ def scan_repository(
     file_count = {"python": 0, "java": 0, "go": 0}
 
     for path in repo_path.rglob("*"):
-        if not path.is_file():
-            continue
+        try:
+            if not path.is_file():
+                continue
+        except OSError:
+            continue  # skip symlinks, permission errors, long paths on Windows
         ext = path.suffix.lower()
         detector = _get_detector(ext)
         if detector is None:

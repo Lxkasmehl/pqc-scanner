@@ -52,3 +52,41 @@ With `--write-verification-report`:
 - **full**: Index file plus one file per repo with each finding and a link to the line on GitHub (for spot-checking and correcting labels).
 
 For the full evaluation workflow (finding repos, labelling, what to report in the paper), see **docs/EVALUATION.md**.
+
+## Re-running so all 20 ground-truth repos are evaluated
+
+By default, clone timeout is 300 seconds. Large repos (**bcgit/bc-java**, **golang/go**) can fail with “Clone or scan failed” and are then excluded. The repo **stevelr/python-rsa** no longer exists on GitHub (404); the ground truth also includes **sybrenstuvel/python-rsa** (canonical PyPI `rsa`), so at most 19 of the 20 entries can be cloned. You can remove the `stevelr/python-rsa` row from the CSV to get a clean 19-repo evaluation.
+
+**Option A: Increase clone timeout (recommended first try)**
+
+From the project root, set a longer timeout and run as usual:
+
+```bash
+# Windows (PowerShell)
+$env:PQC_CLONE_TIMEOUT = "900"
+python evaluation/run_evaluation.py -g evaluation/ground_truth_curated.csv --write-verification-report
+
+# Linux/macOS
+export PQC_CLONE_TIMEOUT=900
+python evaluation/run_evaluation.py -g evaluation/ground_truth_curated.csv --write-verification-report
+```
+
+Use 900 (15 min) or 1200 (20 min) if needed. Clone directory defaults to **eval_clones/** (or `PQC_CLONE_DIR`).
+
+**Option B: Pre-clone the failing repos, then run with existing clones**
+
+If some repos still time out, clone them once manually (e.g. with `--depth 1`), then re-run so the script reuses those clones:
+
+1. Create clone dir (if needed):  
+   `mkdir eval_clones` (or use your `PQC_CLONE_DIR`).
+
+2. Clone the repos that time out (names must match what the script expects). **Note:** `stevelr/python-rsa` is no longer on GitHub (404); only clone the two below (or remove that row from the CSV).
+   - `pqc_scan_bcgit_bc-java` → `git clone -c core.longpaths=true --depth 1 https://github.com/bcgit/bc-java.git eval_clones/pqc_scan_bcgit_bc-java`
+   - `pqc_scan_golang_go` → `git clone --depth 1 https://github.com/golang/go.git eval_clones/pqc_scan_golang_go`
+
+3. Run evaluation reusing existing clones (other repos are still cloned by the script if missing):
+   ```bash
+   python evaluation/run_evaluation.py -g evaluation/ground_truth_curated.csv --write-verification-report --use-existing-clones
+   ```
+
+The generated **verification_report.md** (and optional per-repo reports with `--report-style full`) will then reflect all repos that could be cloned and scanned (up to 19 if you drop the `stevelr/python-rsa` row, since that repo no longer exists).
