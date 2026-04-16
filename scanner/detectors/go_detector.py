@@ -28,6 +28,17 @@ except ImportError:
 
 # Import path -> (primitive for report, confidence). Order matters: check specific before prefixes.
 GO_IMPORT_PRIMITIVE_MAP: list[tuple[str, str, str]] = [
+    # PQC: Cloudflare CIRCL (KEM/sign subpackages; listed before broad x/crypto)
+    ("github.com/cloudflare/circl/kem/kyber", "kyber", "medium"),
+    ("github.com/cloudflare/circl/pqc/", "kyber", "medium"),
+    ("github.com/cloudflare/circl/sign/dilithium", "dilithium", "medium"),
+    ("github.com/cloudflare/circl/sign/mldsa", "mldsa", "medium"),
+    ("github.com/cloudflare/circl/sign/sphincs", "sphincs", "medium"),
+    # PQC: Tink Go v2 (public + internal PQ packages; module uses mldsa/slhdsa not ml_dsa)
+    ("github.com/tink-crypto/tink-go/v2/signature/mldsa", "mldsa", "medium"),
+    ("github.com/tink-crypto/tink-go/v2/signature/slhdsa", "sphincs", "medium"),
+    ("github.com/tink-crypto/tink-go/v2/internal/signature/mldsa", "mldsa", "medium"),
+    ("github.com/tink-crypto/tink-go/v2/internal/signature/slhdsa", "sphincs", "medium"),
     # PQC (report as oqs for classifier)
     ("github.com/open-quantum-safe/liboqs-go", "oqs", "medium"),
     ("github.com/open-quantum-safe/", "oqs", "medium"),
@@ -110,35 +121,52 @@ class _GoVisitor:
             )
         )
 
+    def _import_path_from_spec(self, spec: "Node") -> str | None:
+        """Resolve import path string from an import_spec node (grouped or single import)."""
+        path_node = spec.child_by_field_name("path")
+        if path_node is None:
+            for j in range(spec.child_count):
+                t = spec.child(j).type
+                if t in ("string_literal", "interpreted_string_literal"):
+                    path_node = spec.child(j)
+                    break
+        if path_node is None:
+            return None
+        raw = _get_text(self.source_bytes, path_node)
+        if len(raw) < 2:
+            return None
+        # Go uses double-quoted import paths; strip quotes
+        if raw[0] in '"\'' and raw[-1] == raw[0]:
+            return raw[1:-1].strip()
+        return raw.strip()
+
+    def _visit_import_specs_recursive(self, node: "Node") -> None:
+        """Grouped imports nest import_spec under import_spec_list; walk the full subtree."""
+        if node.type == "import_spec":
+            path = self._import_path_from_spec(node)
+            if not path:
+                return
+            for prefix, primitive, confidence in GO_IMPORT_PRIMITIVE_MAP:
+                p = prefix.rstrip("/")
+                if path == p or path.startswith(p + "/"):
+                    line = _node_line(node, self.source_bytes)
+                    lib = path.split("/")[0] if "/" in path else path
+                    self._add(
+                        line,
+                        primitive,
+                        lib,
+                        _get_line_snippet(self.source, line),
+                        confidence,
+                    )
+                    break
+            return
+        for i in range(node.child_count):
+            self._visit_import_specs_recursive(node.child(i))
+
     def _visit_node(self, node: "Node") -> None:
         if node.type == "import_declaration":
-            # import ( "path" ) or import "path"
-            for i in range(node.child_count):
-                c = node.child(i)
-                if c.type == "import_spec":
-                    path_node = c.child_by_field_name("path")
-                    if path_node is None:
-                        for j in range(c.child_count):
-                            if c.child(j).type == "string_literal":
-                                path_node = c.child(j)
-                                break
-                    if path_node is not None:
-                        raw = _get_text(self.source_bytes, path_node)
-                        if len(raw) >= 2:
-                            path = raw[1:-1].strip()
-                            for prefix, primitive, confidence in GO_IMPORT_PRIMITIVE_MAP:
-                                p = prefix.rstrip("/")
-                                if path == p or path.startswith(p + "/"):
-                                    line = _node_line(node, self.source_bytes)
-                                    lib = path.split("/")[0] if "/" in path else path
-                                    self._add(
-                                        line,
-                                        primitive,
-                                        lib,
-                                        _get_line_snippet(self.source, line),
-                                        confidence,
-                                    )
-                                    break
+            # import "x" or import ( "a" "b" ) — specs may be under import_spec_list
+            self._visit_import_specs_recursive(node)
             return
         if node.type == "call_expression":
             func = node.child_by_field_name("function")

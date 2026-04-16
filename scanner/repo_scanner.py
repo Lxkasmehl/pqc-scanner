@@ -2,6 +2,7 @@
 Repository scanner: walks a local repo, runs language detectors, and aggregates findings.
 """
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -66,22 +67,14 @@ def _register_go_detector():
         pass
 
 
-def _language_stats(repo_path: Path) -> dict[str, int]:
-    stats = {"python": 0, "java": 0, "go": 0}
-    for path in repo_path.rglob("*"):
-        try:
-            if not path.is_file():
-                continue
-        except OSError:
-            continue  # skip symlinks, permission errors, long paths on Windows
-        ext = path.suffix.lower()
-        if ext == ".py":
-            stats["python"] += 1
-        elif ext == ".java":
-            stats["java"] += 1
-        elif ext == ".go":
-            stats["go"] += 1
-    return stats
+def _register_c_liboqs_detector():
+    try:
+        from scanner.detectors.c_liboqs_detector import CLibOqsDetector
+        d = CLibOqsDetector()
+        EXT_TO_DETECTOR[".c"] = d
+        EXT_TO_DETECTOR[".h"] = d
+    except ImportError:
+        pass
 
 
 def scan_repository(
@@ -97,10 +90,14 @@ def scan_repository(
 
     _register_java_detector()
     _register_go_detector()
+    _register_c_liboqs_detector()
 
-    language_stats = _language_stats(repo_path)
+    language_stats = {"python": 0, "java": 0, "go": 0, "c": 0}
     findings_agg: list[dict[str, Any]] = []
     file_count = {"python": 0, "java": 0, "go": 0}
+
+    progress_every = int(os.getenv("PQC_SCAN_PROGRESS", "0") or "0")
+    scanned_files = 0
 
     for path in repo_path.rglob("*"):
         try:
@@ -109,9 +106,25 @@ def scan_repository(
         except OSError:
             continue  # skip symlinks, permission errors, long paths on Windows
         ext = path.suffix.lower()
+        if ext == ".py":
+            language_stats["python"] += 1
+        elif ext == ".java":
+            language_stats["java"] += 1
+        elif ext == ".go":
+            language_stats["go"] += 1
+        elif ext in (".c", ".h"):
+            language_stats["c"] += 1
+
         detector = _get_detector(ext)
         if detector is None:
             continue
+
+        scanned_files += 1
+        if progress_every > 0 and scanned_files % progress_every == 0:
+            print(
+                f"  [scan progress] {scanned_files} source files in {repo_path.name} ...",
+                flush=True,
+            )
 
         try:
             source = path.read_text(encoding="utf-8", errors="replace")

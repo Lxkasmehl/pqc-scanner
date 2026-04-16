@@ -40,6 +40,15 @@ class X {
     assert any("rsa" in f.primitive.lower() for f in findings)
 
 
+def test_java_detector_liboqs_java_import(java_detector):
+    source = """
+import org.openquantumsafe.oqs.KeyEncapsulation;
+class L { }
+"""
+    findings = java_detector.detect(Path("L.java"), source)
+    assert any(f.primitive == "oqs" for f in findings)
+
+
 def test_java_detector_get_instance_ec(java_detector):
     source = '''
 class Y {

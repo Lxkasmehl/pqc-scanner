@@ -41,8 +41,22 @@ fixtures,1,1,../tests/fixtures,Local fixtures
 - **`--no-clone`** — Only evaluate rows that have `local_path` set (no GitHub clone).
 - **`--clone-dir PATH`** — Where to clone (default: **eval_clones**). Env: `PQC_CLONE_DIR`.
 - **`PQC_CLONE_TIMEOUT`** — Clone timeout in seconds (default 300). Increase for large repos.
+- **`PQC_SCAN_PROGRESS`** — If set to a positive integer (e.g. `500`), the scanner prints a line every N **source files** while scanning a repo. Default is `0` (no progress). Large Java repos (**bcgit/bc-java**, **golang/go**) can take **many minutes** with **no** new terminal lines between `[n/19] …` and the next repo—this is usually still a running scan, not a hang.
 
 See the script docstring (`evaluation/run_evaluation.py`) for manual-clone path format and full options.
+
+### “Nothing happens” for a long time
+
+Between repos the script only prints **before** each clone/scan. **bc-java** and **golang/go** have huge trees; scanning is CPU + disk I/O. If the project (or `eval_clones/`) lives on **Google Drive / OneDrive** (`G:\\My Drive\\...`), scans can be **orders of magnitude slower**—prefer a **local SSD** clone directory:
+
+```powershell
+mkdir C:\temp\pqc_eval_clones
+$env:PQC_CLONE_DIR = "C:\temp\pqc_eval_clones"
+$env:PQC_SCAN_PROGRESS = "500"
+python evaluation/run_evaluation.py -g evaluation/ground_truth_curated.csv --write-verification-report --use-existing-clones
+```
+
+(Pre-clone large repos into that folder with the expected folder names, or let the script clone there.)
 
 ## Verification report
 

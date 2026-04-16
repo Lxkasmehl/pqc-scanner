@@ -20,7 +20,13 @@ except ImportError:
     tree_sitter = None
     _JAVA_LANGUAGE = None
 
-JAVA_IMPORT_PREFIXES = ("javax.crypto", "java.security", "org.bouncycastle")
+JAVA_IMPORT_PREFIXES = (
+    "javax.crypto",
+    "java.security",
+    "org.bouncycastle",
+    "org.openquantumsafe",  # liboqs-java (OQS JNI)
+    "com.google.crypto.tink",  # Tink; PQC-only subpaths handled below
+)
 # PQC packages: map import path substring → primitive name for classifier (PQC_READY)
 JAVA_PQC_IMPORT_PRIMITIVES = {
     "kyber": "kyber",
@@ -116,6 +122,21 @@ class _JavaVisitor:
                             for key, algo in JAVA_PQC_IMPORT_PRIMITIVES.items():
                                 if key in imp_lower:
                                     primitive = algo
+                                    break
+                            # liboqs-java: any org.openquantumsafe.* → PQC-ready
+                            if "org.openquantumsafe" in imp_lower:
+                                primitive = "oqs"
+                            # Tink: only PQ-related subtrees (avoid counting all of Tink as PQC)
+                            elif "com.google.crypto.tink" in imp_lower:
+                                if "ml_kem" in imp_lower or "mlkem" in imp_lower:
+                                    primitive = "mlkem"
+                                elif "ml_dsa" in imp_lower or "mldsa" in imp_lower:
+                                    primitive = "mldsa"
+                                elif "slh_dsa" in imp_lower or "sphincs" in imp_lower:
+                                    primitive = "sphincs"
+                                elif "post_quantum" in imp_lower or ".pqc." in imp_lower:
+                                    primitive = "mldsa"
+                                else:
                                     break
                             self._add(
                                 line,

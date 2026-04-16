@@ -38,6 +38,26 @@ func main() {
     assert any("GenerateKey" in f.primitive or "rsa" in f.primitive for f in findings)
 
 
+def test_go_detector_circl_kyber_import(go_detector):
+    source = """
+package main
+import "github.com/cloudflare/circl/kem/kyber/kyber768"
+func main() {}
+"""
+    findings = go_detector.detect(Path("x.go"), source)
+    assert any("kyber" in f.primitive.lower() for f in findings)
+
+
+def test_go_detector_tink_ml_dsa_import(go_detector):
+    source = """
+package main
+import "github.com/tink-crypto/tink-go/v2/signature/mldsa"
+func main() {}
+"""
+    findings = go_detector.detect(Path("x.go"), source)
+    assert any("mldsa" in f.primitive.lower() for f in findings)
+
+
 def test_go_detector_elliptic_p256(go_detector):
     source = '''
 package main
