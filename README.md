@@ -80,10 +80,12 @@ Print paper-ready statistics: PQC vulnerability rate, breakdown by language, pri
 
 ```bash
 python cli.py report
-python cli.py report --output report.md
+python cli.py report --output results/report.md
 ```
 
-The report includes: sample size, % repos with vulnerable primitives, % with PQC-ready primitives, counts by language, top vulnerable/PQC-ready primitives, and vulnerable findings in production vs test code. Primitive names are aggregated by a canonical key (e.g. RSA, ECDSA, `crypto/rsa`, `rsa.GenerateKey` merged) so the top-primitives tables are not split by spelling or language.
+The report includes: sample size, % repos with vulnerable primitives, % with PQC-ready primitives, counts **by GitHub primary language** (Python / Java / Go), top vulnerable/PQC-ready primitives, and vulnerable findings in production vs test code. Primitive names are aggregated by a canonical key (e.g. RSA, ECDSA, `crypto/rsa`, `rsa.GenerateKey` merged) so the top-primitives tables are not split by spelling or language.
+
+**Language column in `results/aggregate.csv`:** Rows rebuilt from raw JSON only (e.g. `rebuild-aggregate`) start with an empty `language` field. The **same** GitHub metadata that `collect` stored in `scanner/state.db` is merged when you run `report` (default: `scanner/state.db`) and when you run **`enrich-aggregate`** or **`rebuild-aggregate`** (auto-enriches from `state.db` if present). That way the CSV and the Markdown report stay aligned with the paper’s per-language table without manual scripts.
 
 For methodological caveats (test/vendor heuristics, Go TLS detection, PQC adoption by language), see **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
 

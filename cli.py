@@ -170,13 +170,26 @@ def export_repos(
 @app.command("rebuild-aggregate")
 def rebuild_aggregate(
     results_dir: str = typer.Option(None, "--results-dir", help="Path to results/ (default: env PQC_RESULTS_DIR or 'results')"),
+    state_db: str = typer.Option(None, "--state-db", help="Path to scanner/state.db (default: scanner/state.db); used to auto-fill language/stars in CSV"),
 ) -> None:
     """
     Rebuild results/aggregate.csv from all results/raw/*.json.
     Use after downloading scanner-results from a resumed run so the CSV has one row per raw file.
+    If scanner/state.db is present, metadata (language, stars, …) is merged into the CSV automatically
+    (same as enrich-aggregate).
     """
     base = Path(results_dir or os.getenv("PQC_RESULTS_DIR", "results"))
     path = rebuild_aggregate_csv_from_raw(base)
+    db_path = Path(state_db or str(_project_root / "scanner" / "state.db"))
+    if db_path.is_file():
+        from scanner.github_collector import get_scanned_repos_metadata
+
+        metadata = get_scanned_repos_metadata(db_path)
+        if metadata:
+            enrich_aggregate_csv_from_state(base, db_path, metadata)
+            logger.info("Enriched aggregate.csv from state DB (language, stars, …): {}", db_path)
+    else:
+        logger.info("No state DB at {}; language column left empty unless you run enrich-aggregate.", db_path)
     logger.info("Aggregate CSV: {}", path)
 
 
@@ -204,12 +217,17 @@ def enrich_aggregate(
 def report(
     results_dir: str = typer.Option(None, "--results-dir", help="Path to results/ (default: env PQC_RESULTS_DIR or 'results')"),
     output: Path | None = typer.Option(None, "--output", "-o", path_type=Path, help="Write report to file (Markdown for paper/methods)"),
+    state_db: str = typer.Option(None, "--state-db", help="Path to scanner/state.db (default: scanner/state.db); GitHub language when CSV language column is empty"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="More detailed progress on stderr"),
 ) -> None:
     """
     Generate summary statistics for the paper: PQC vulnerability rate, by language,
     primitive distribution, PQC adoption, and criticality (production vs test code).
     Use --output report.md to export a Markdown report for the paper.
+
+    Per-repo language: non-empty cells in aggregate.csv, else metadata from state.db (same DB as collect).
     """
+    _setup_logging(verbose)
     base = Path(results_dir or os.getenv("PQC_RESULTS_DIR", "results"))
     raw_dir = base / "raw"
     if not raw_dir.is_dir():
@@ -218,7 +236,12 @@ def report(
 
     from scanner.output import compute_report, format_report_text, format_report_markdown
     aggregate_path = base / "aggregate.csv"
-    stats = compute_report(raw_dir, aggregate_path if aggregate_path.exists() else None)
+    db_path = Path(state_db or str(_project_root / "scanner" / "state.db"))
+    stats = compute_report(
+        raw_dir,
+        aggregate_path if aggregate_path.exists() else None,
+        db_path if db_path.is_file() else None,
+    )
     if not stats:
         raise typer.Exit(0)
 

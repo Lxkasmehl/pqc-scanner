@@ -49,13 +49,7 @@ The GitHub Search API returns **at most 1,000 results per query**. To build a da
 
    This regenerates a full CSV from the raw folder.
 
-   **Missing language/stars/forks in CSV:** If you ran `rebuild-aggregate` and the CSV has empty language, stars, forks, etc., those fields are not stored in the raw JSONs—they come from the scanner state DB. Download the **scanner-state** artifact from the same run (or the run that produced those scans), extract it so that `scanner/state.db` exists (e.g. create a `scanner` folder and put the artifact’s `state.db` there), then run:
-
-   ```bash
-   python cli.py enrich-aggregate
-   ```
-
-   This fills language, stars, forks, created_at, size, and topics in `aggregate.csv` from the state DB. No re-scan needed.
+   **Missing language/stars/forks in CSV:** Those fields are not stored in the raw JSONs—they come from the scanner state DB. Download the **scanner-state** artifact from the same run, extract it so that `scanner/state.db` exists next to `results/`. Then either run `python cli.py rebuild-aggregate` (if `state.db` is present, language/stars are **filled into the CSV automatically**) or run `python cli.py enrich-aggregate` to merge metadata without rebuilding rows from JSON. The **`report`** command also merges GitHub language from `scanner/state.db` when the CSV cell is empty, so `results/report.md` has a correct per-language table even before you enrich the CSV.
 
 ## Option B: GitHub Archive / BigQuery (largest scale)
 

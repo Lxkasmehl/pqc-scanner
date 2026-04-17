@@ -13,6 +13,43 @@ from loguru import logger
 from scanner.classifier import get_canonical_primitive_key
 
 
+def repo_id_to_repo_name(repo_id: str) -> str:
+    """Undo safe filename form `owner_repo` → GitHub `owner/repo` (first underscore only)."""
+    if "_" not in repo_id:
+        return repo_id
+    return repo_id.replace("_", "/", 1)
+
+
+def load_repo_languages_from_aggregate_csv(path: Path) -> dict[str, str]:
+    """Map repo_name → language for rows where the CSV language column is non-empty."""
+    out: dict[str, str] = {}
+    if not path.is_file():
+        return out
+    with open(path, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            name = (row.get("repo_name") or "").strip()
+            lang = (row.get("language") or "").strip()
+            if name and lang:
+                out[name] = lang
+    return out
+
+
+def load_repo_languages_from_state_db(state_db_path: Path) -> dict[str, str]:
+    """Map repo_name → GitHub primary language from scanner state (same metadata as collect)."""
+    from scanner.github_collector import get_scanned_repos_metadata
+
+    out: dict[str, str] = {}
+    if not state_db_path.is_file():
+        return out
+    for repo_id, meta in get_scanned_repos_metadata(state_db_path).items():
+        lang = (meta.get("language") or "").strip()
+        if not lang:
+            continue
+        out[repo_id_to_repo_name(repo_id)] = lang
+    return out
+
+
 def get_raw_dir(results_root: Path) -> Path:
     """Ensure results/raw exists and return it."""
     raw = results_root / "raw"
@@ -194,29 +231,45 @@ def build_aggregate_row(
     return row
 
 
-def compute_report(raw_dir: Path, aggregate_path: Path | None = None) -> dict[str, Any]:
+def compute_report(
+    raw_dir: Path,
+    aggregate_path: Path | None = None,
+    state_db_path: Path | None = None,
+) -> dict[str, Any]:
     """
-    Aggregate all raw JSONs (and optional aggregate CSV for language) into stats for the paper:
-    - Overall: repos, PQC vulnerability rate, finding counts
-    - By language: repos and % with vulnerable per language
-    - Primitive distribution: counts per primitive (vulnerable / safe / PQC-ready)
-    - PQC-ready adoption: repos and findings
-    - Optional: vulnerable in test vs non-test (production path)
+    Aggregate all raw JSONs into stats for the paper.
+
+    Per-repo **language** (GitHub primary): taken from non-empty cells in ``aggregate.csv`` if
+    present, otherwise merged from ``state_db_path`` (same metadata as ``collect``). This avoids
+    ``unknown`` for every row when the CSV was rebuilt from raw JSON only—run ``enrich-aggregate``
+    to persist language into the CSV, or pass ``state_db_path`` (default in CLI: ``scanner/state.db``).
     """
     raw_dir = Path(raw_dir)
     if not raw_dir.is_dir():
         return {}
 
-    # Per-repo language from aggregate CSV (repo_name -> language)
-    repo_language: dict[str, str] = {}
+    csv_langs: dict[str, str] = {}
     if aggregate_path and aggregate_path.is_file():
-        with open(aggregate_path, encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                name = row.get("repo_name", "").strip()
-                lang = (row.get("language") or "").strip()
-                if name:
-                    repo_language[name] = lang or "unknown"
+        csv_langs = load_repo_languages_from_aggregate_csv(Path(aggregate_path))
+        logger.info("Loaded {} non-empty language cell(s) from {}", len(csv_langs), aggregate_path)
+
+    state_langs: dict[str, str] = {}
+    if state_db_path and Path(state_db_path).is_file():
+        state_langs = load_repo_languages_from_state_db(Path(state_db_path))
+        logger.info("Loaded {} repo language(s) from state DB {}", len(state_langs), state_db_path)
+
+    def language_for_repo(repo_name: str) -> str:
+        lang = (csv_langs.get(repo_name) or state_langs.get(repo_name) or "").strip()
+        return lang or "unknown"
+
+    json_files = sorted(raw_dir.glob("*.json"))
+    n_files = len(json_files)
+    logger.info("Aggregating report from {} JSON file(s) under {}", n_files, raw_dir)
+    if n_files == 0:
+        logger.warning("No *.json files in {}", raw_dir)
+
+    # ~10–40 INFO lines per large run; at least every 25 repos for smaller sets
+    progress_info = min(1500, max(25, n_files // 25)) if n_files else 1
 
     total_repos = 0
     total_findings = 0
@@ -236,12 +289,15 @@ def compute_report(raw_dir: Path, aggregate_path: Path | None = None) -> dict[st
     vulnerable_in_production = 0
     by_language: dict[str, dict[str, Any]] = {}
 
-    for jpath in raw_dir.glob("*.json"):
+    for jpath in json_files:
         try:
             data = json.loads(jpath.read_text(encoding="utf-8"))
         except Exception:
             continue
         total_repos += 1
+        if total_repos == 1 or total_repos % progress_info == 0:
+            logger.info("Processed {}/{} repo JSON file(s)…", total_repos, n_files)
+        logger.debug("{}", jpath.name)
         s = data.get("summary", {})
         total_findings += s.get("total_findings", 0)
         total_vulnerable += s.get("vulnerable_count", 0)
@@ -253,7 +309,7 @@ def compute_report(raw_dir: Path, aggregate_path: Path | None = None) -> dict[st
             repos_with_pqc_ready += 1
 
         repo_name = jpath.stem.replace("_", "/", 1) if "_" in jpath.stem else jpath.stem
-        lang = repo_language.get(repo_name, "unknown")
+        lang = language_for_repo(repo_name)
         if lang not in by_language:
             by_language[lang] = {"repos": 0, "with_vulnerable": 0, "with_pqc": 0}
         by_language[lang]["repos"] += 1
@@ -282,6 +338,8 @@ def compute_report(raw_dir: Path, aggregate_path: Path | None = None) -> dict[st
     pqc_vulnerability_rate = (100.0 * repos_with_vulnerable / total_repos) if total_repos else 0.0
     pqc_adoption_rate = (100.0 * repos_with_pqc_ready / total_repos) if total_repos else 0.0
 
+    logger.info("Report aggregation done: {} repo(s), {} total findings", total_repos, total_findings)
+
     return {
         "total_repos": total_repos,
         "total_findings": total_findings,
@@ -298,6 +356,11 @@ def compute_report(raw_dir: Path, aggregate_path: Path | None = None) -> dict[st
         "vulnerable_in_test": vulnerable_in_test,
         "vulnerable_in_production": vulnerable_in_production,
         "aggregate_path": str(aggregate_path) if aggregate_path else None,
+        "state_db_path": str(state_db_path) if state_db_path else None,
+        "language_sources": {
+            "from_csv": len(csv_langs),
+            "from_state_db": len(state_langs),
+        },
     }
 
 
@@ -324,14 +387,19 @@ def format_report_text(stats: dict[str, Any]) -> str:
         f"  In production code:  {stats['vulnerable_in_production']}",
         f"  In test/example code: {stats['vulnerable_in_test']}",
         "",
-        "By language",
+        "By language (GitHub primary; CSV and/or state.db)",
     ]
     for lang in sorted(stats["by_language"].keys(), key=lambda x: (x == "unknown", x.lower())):
         bl = stats["by_language"][lang]
         n = bl["repos"]
         v = bl["with_vulnerable"]
+        pq = bl["with_pqc"]
         pct = (100.0 * v / n) if n else 0
-        lines.append(f"  {lang or 'unknown':12}  repos: {n:5}  with vulnerable: {v:4}  ({pct:.1f}%)")
+        pq_pct = (100.0 * pq / n) if n else 0
+        lines.append(
+            f"  {lang or 'unknown':12}  repos: {n:5}  vuln repos: {v:4} ({pct:5.1f}%)  "
+            f"PQC repos: {pq:3} ({pq_pct:4.2f}%)"
+        )
     lines.extend([
         "",
         "Top primitives (vulnerable)",
@@ -354,11 +422,15 @@ def format_report_markdown(stats: dict[str, Any]) -> str:
     """Markdown report for paper / methods / appendix."""
     if not stats:
         return ""
+    src = stats.get("language_sources") or {}
     lines = [
         "# PQC-Readiness Scanner – Summary Report",
         "",
         "## Sample",
         f"- **Repositories scanned:** {stats['total_repos']}",
+        f"- **Language metadata:** {src.get('from_csv', 0)} non-empty language cell(s) in aggregate.csv; "
+        f"{src.get('from_state_db', 0)} repo(s) with language in scanner/state.db. "
+        "Merged for this report (CSV wins when both exist). Run `python cli.py enrich-aggregate` to write stars/language into the CSV.",
         "",
         "## PQC Vulnerability",
         f"- **Repositories with ≥1 post-quantum-vulnerable primitive:** {stats['repos_with_vulnerable']} ({stats['pqc_vulnerability_rate_pct']}%)",
@@ -375,8 +447,8 @@ def format_report_markdown(stats: dict[str, Any]) -> str:
         "",
         "## By language",
         "",
-        "| Language | Repos | With vulnerable | % | With PQC-ready |",
-        "|----------|-------|-----------------|---|----------------|",
+        "| Language | Repos | With vulnerable | % vuln. | With PQC-ready | % PQC |",
+        "|----------|-------|-----------------|--------|----------------|-------|",
     ]
     for lang in sorted(stats["by_language"].keys(), key=lambda x: (x == "unknown", x.lower())):
         bl = stats["by_language"][lang]
@@ -384,7 +456,8 @@ def format_report_markdown(stats: dict[str, Any]) -> str:
         v = bl["with_vulnerable"]
         pct = (100.0 * v / n) if n else 0
         pq = bl["with_pqc"]
-        lines.append(f"| {lang or 'unknown'} | {n} | {v} | {pct:.1f}% | {pq} |")
+        pq_pct = (100.0 * pq / n) if n else 0
+        lines.append(f"| {lang or 'unknown'} | {n} | {v} | {pct:.1f}% | {pq} | {pq_pct:.2f}% |")
     lines.extend([
         "",
         "## Top vulnerable primitives",
