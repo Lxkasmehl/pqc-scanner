@@ -87,8 +87,6 @@ The report includes: sample size, % repos with vulnerable primitives, % with PQC
 
 **Language column in `results/aggregate.csv`:** Rows rebuilt from raw JSON only (e.g. `rebuild-aggregate`) start with an empty `language` field. The **same** GitHub metadata that `collect` stored in `scanner/state.db` is merged when you run `report` (default: `scanner/state.db`) and when you run **`enrich-aggregate`** or **`rebuild-aggregate`** (auto-enriches from `state.db` if present). That way the CSV and the Markdown report stay aligned with the paper’s per-language table without manual scripts.
 
-For methodological caveats (test/vendor heuristics, Go TLS detection, PQC adoption by language), see **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
-
 ## Configuration (.env)
 
 | Variable              | Description                                                       |
